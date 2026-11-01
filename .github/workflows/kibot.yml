@@ -1,0 +1,40 @@
+name: KiBot ERC/DRC
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  kibot:
+    name: ERC/DRC + exports (${{ matrix.board }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - base-controller
+          - hand-minute
+          - hand-hour
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run KiBot
+        uses: INTI-CMNB/KiBot@v2_k9
+        with:
+          config: kibot.yml
+          dir: hardware/${{ matrix.board }}
+          schema: ${{ matrix.board }}.kicad_sch
+          board: ${{ matrix.board }}.kicad_pcb
+
+      - name: Upload KiBot outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kibot-${{ matrix.board }}
+          path: |
+            hardware/${{ matrix.board }}/kibot_out
+            hardware/${{ matrix.board }}/*-erc.rpt
+            hardware/${{ matrix.board }}/*-drc.rpt
+          if-no-files-found: warn
