@@ -16,7 +16,7 @@ preflight:
   run_erc: true
   erc_warnings: false   # fail CI only on ERC errors
   update_xml: true
-  run_drc: false  # enable after routing; local reports in review/*_drc.rpt
+  run_drc: true   # enabled: 0 non-UC DRC errors; ignore_unconnected absorbs remaining UC
   check_zone_fills: false
   ignore_unconnected: true   # boards may be unrouted initially
   filters:

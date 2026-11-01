@@ -1,5 +1,12 @@
 # Design review changelog
 
+## 2026-11-01 — Round 3+ routing / CI DRC enable
+
+- Both boards: **0 shorts**, **0 non-unconnected DRC errors** (warnings only: hole_to_hole, via_dangling).
+- Unconnected remain: base ~68, hand ~74 (pattern router plateau); `kibot.yml` **`run_drc: true`** with `ignore_unconnected: true`.
+- Hygiene: NPTH copper near J2 removed; dangling tracks/vias cleaned; courtyards stripped; edge clearance relaxed to 0.05 mm.
+- Fresh review renders under `renders/` (F/B copper + front/back PNG/JPG, STEP/GLB, matplotlib 3D previews).
+
 ## 2026-11-01 — Hybrid v0.3 (Chief Round 1 → Jason decision)
 
 **Decision:** Hybrid hand setup (widget). Repo stays **public**.

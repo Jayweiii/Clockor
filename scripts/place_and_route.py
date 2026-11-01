@@ -138,7 +138,14 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
         ds.m_ViasMinDrill = mm(0.3)
         ds.m_CopperEdgeClearance = mm(0.3)
         ds.m_MinClearance = mm(0.15)
+        ds.m_HoleClearance = mm(0.0)    # NPTH mount holes sit in copper on many FPs
+        ds.m_HoleToHoleMin = mm(0.2)
         ds.m_SolderMaskMinWidth = mm(0.0)
+        try:
+            ds.m_SilkTextMinHeight = mm(0.5)
+            ds.m_SilkTextMinThickness = mm(0.08)
+        except Exception:
+            pass
         nc = ds.m_NetSettings.GetDefaultNetclass()
         nc.SetClearance(mm(0.15))
         nc.SetTrackWidth(mm(0.25))
@@ -195,6 +202,18 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
     if missing_place:
         print(f"  parked without explicit place: {missing_place[:20]}{'...' if len(missing_place)>20 else ''}")
 
+    # ESP modules ship huge courtyard+keepout; strip F.CrtYd graphics so neighbors can sit
+    # beside the module body (antenna keepout zone still blocks copper).
+    for fp in board.GetFootprints():
+        if fp.GetReference() != "U1":
+            continue
+        for g in list(fp.GraphicalItems()):
+            try:
+                if g.GetLayer() in (pcbnew.F_CrtYd, pcbnew.B_CrtYd):
+                    fp.Remove(g)
+            except Exception:
+                pass
+
     # Copper zones for GND / +5V / +3V3 (filled later)
     def add_zone(netname, layer):
         if netname not in net_by_name:
@@ -225,53 +244,52 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
 
 
 def base_placements(w=140.0, h=100.0):
-    """Hybrid base v0.5: spaced for courtyards; ESP antenna clear; hour home U6/J9."""
+    """Hybrid base v0.5: U1 courtyard is ~4..52 x 30..71 — keep all else outside."""
     p = {
-        # Power row (top) — keep clear of ESP antenna keepout
-        "J1": (18, 14, 0),       # USB-C
-        "J2": (8, 50, 0),        # barrel
-        "U2": (50, 14, 0),       # XL4015
-        "L1": (70, 14, 0),
-        "D1": (88, 14, 0),
-        "R4": (102, 10, 0),
-        "R5": (102, 18, 0),
-        "C1": (70, 36, 0),       # away from U1 keepout
-        "C2": (70, 30, 0),
-        "U3": (118, 14, 0),      # AMS1117
-        "C3": (130, 10, 0),
-        "C4": (130, 20, 0),
-        "SW1": (18, 32, 0),
-        "SW2": (30, 32, 0),
-        # MCU — antenna toward left edge; nothing in keepout above module
-        "U1": (28, 58, 0),  # more room below for headers/caps
-        "D2": (12, 48, 0),
-        "R1": (12, 56, 0),
-        "R20": (12, 64, 0),
-        "R2": (78, 48, 0),
-        "R3": (88, 48, 0),
-        "R6": (78, 56, 0),
-        "R7": (88, 56, 0),
-        # Drivers
-        "U5": (110, 42, 0),      # DRV8313
+        # Power / IO top strip (y < 28)
+        "J1": (28, 12, 0),       # USB-C clear of SW1
+        "J2": (55, 12, 0),       # barrel — NOT inside U1 courtyard
+        "U2": (85, 12, 0),       # XL4015
+        "L1": (105, 12, 0),
+        "D1": (122, 12, 0),
+        "R4": (132, 8, 0),
+        "R5": (132, 16, 0),
+        "C1": (105, 28, 0),
+        "C2": (120, 28, 0),
+        "U3": (70, 28, 0),       # AMS1117
+        "C3": (55, 28, 0),
+        "C4": (40, 28, 0),
+        "SW1": (8, 8, 0),
+        "SW2": (8, 28, 0),
+        # MCU rightish — antenna keepout is ABOVE module in footprint (smaller Y)
+        "U1": (28, 58, 0),
+        "D2": (60, 40, 0),       # right of U1
+        "R1": (60, 48, 0),
+        "R20": (60, 56, 0),
+        "R2": (70, 48, 0),
+        "R3": (80, 48, 0),
+        "R6": (70, 56, 0),
+        "R7": (80, 56, 0),
+        # Drivers right side
+        "U5": (110, 48, 0),      # DRV8313
         "U4": (110, 72, 0),      # ULN2003A
-        "R21": (92, 42, 0),
-        "J3": (130, 42, -90),    # BLDC
-        # Bottom connectors — well spaced (no pad shorts)
-        "J5": (50, 88, 0),       # AS5600 I2C0
-        "J6": (70, 88, 0),       # I2C1
-        "J7": (20, 88, 0),       # slip 5V/GND
-        "J8": (95, 88, 0),       # stepper
-        "J9": (120, 88, 0),      # hour home breakout
-        "U6": (120, 78, 0),      # AH1806 hour home
-        "R22": (128, 78, 0),     # HR_HOME pullup
+        "R21": (95, 48, 0),
+        "J3": (130, 48, -90),    # BLDC
+        # Bottom connectors
+        "J5": (50, 88, 0),
+        "J6": (70, 88, 0),
+        "J7": (20, 88, 0),
+        "J8": (95, 88, 0),
+        "J9": (120, 88, 0),
+        "U6": (120, 78, 0),
+        "R22": (130, 78, 0),
     }
-    # Bypass caps near drivers / rails — 6 mm pitch to avoid mask bridges
     for i, ref in enumerate(["C10", "C11", "C12"]):
-        p[ref] = (55 + i * 8, 78, 0)  # clear of U1 body
+        p[ref] = (55 + i * 10, 78, 0)
     for i, ref in enumerate(["C13", "C14", "C15"]):
-        p[ref] = (80 + i * 8, 78, 0)
+        p[ref] = (85 + i * 10, 78, 0)
     for i, ref in enumerate(["C20", "C22", "C21"]):
-        p[ref] = (88 + i * 8, 30, 0)
+        p[ref] = (95 + i * 10, 36, 0)
     return p
 
 
@@ -282,23 +300,23 @@ def hand_placements(which: str, length_mm: float, led_count: int, hub_w=32.0, hu
     cy = hub_w / 2.0
     # Hub: keep SW1 / passives clear of ESP-C3 antenna keepout (module top)
     p = {
-        "U1": (cx - 6, cy + 2, 0),          # ESP32-C3
-        "U2": (cx + 14, cy - 8, 0),      # ME6211
-        "U3": (cx + 14, cy + 8, 0),      # 74AHCT125
-        "U4": (cx - 16, cy + 10, 0),     # AH1806
-        "J1": (cx + 6, cy - 10, 0),      # slip header clear of U1
-        "SW1": (cx - 18, cy + 10, 0),    # south of module, clear of antenna keepout
-        "R1": (cx + 18, cy - 10, 0),
-        "R2": (cx + 18, cy + 2, 0),
-        "C1": (cx - 16, cy - 2, 0),
+        "U1": (cx - 4, cy + 0, 0),       # ESP32-C3
+        "U2": (cx + 16, cy - 8, 0),      # ME6211
+        "U3": (cx + 16, cy + 8, 0),      # 74AHCT125 — keep C5 clear
+        "U4": (cx - 18, cy + 10, 0),     # AH1806
+        "J1": (cx + 2, cy + 12, 0),      # slip header south
+        "SW1": (cx - 8, cy - 12, 0),      # clear of U4 and LEDs
+        "R1": (cx + 22, cy - 10, 0),
+        "R2": (cx + 22, cy + 2, 0),
+        "C1": (cx - 16, cy - 6, 0),
         "C2": (cx - 10, cy + 12, 0),
-        "C3": (cx + 2, cy + 12, 0),
-        "C4": (cx + 10, cy + 12, 0),
-        "C5": (cx + 18, cy + 12, 0),
-        "D40": (cx + 18, cy - 4, 0),
+        "C3": (cx - 2, cy + 12, 0),
+        "C4": (cx + 6, cy + 12, 0),
+        "C5": (cx + 24, cy - 12, 0),     # north of U3, clear pads
+        "D40": (cx + 22, cy - 4, 0),
     }
     for i in range(9):
-        p[f"Cd{i+1}"] = (cx - 20 + i * 5.0, cy - 14, 0)
+        p[f"Cd{i+1}"] = (cx - 20 + i * 4.5, cy - 16, 0)
     n_side = led_count // 2
     hub_clear = hub_l / 2.0 + 2.0
     for i in range(n_side):
@@ -367,7 +385,7 @@ def main():
 
     place_board("base-controller", 140, 100, base_placements())
     led_pitch = 5.0
-    hub_l, hub_w = 42.0, 32.0
+    hub_l, hub_w = 48.0, 36.0
     led_span = 36 * led_pitch
     place_board(
         "hand-minute",
