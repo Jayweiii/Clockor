@@ -9437,7 +9437,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "dc4a0bf5-96b7-49c0-a257-392d079b8331")
-		(property "Reference" "R_EN"
+		(property "Reference" "R20"
 			(at 40.0 82.38 0)
 			(effects
 				(font
@@ -9489,7 +9489,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "R_EN")
+					(reference "R20")
 					(unit 1)
 				)
 			)
@@ -9526,7 +9526,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "e2995b88-571c-4f17-ac82-8fb4b16c25dd")
-		(property "Reference" "R_M1F"
+		(property "Reference" "R21"
 			(at 250.0 22.38 0)
 			(effects
 				(font
@@ -9578,7 +9578,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "R_M1F")
+					(reference "R21")
 					(unit 1)
 				)
 			)
@@ -9615,7 +9615,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "44093075-aacb-4e5b-b0c9-28b24e4af647")
-		(property "Reference" "R_M2F"
+		(property "Reference" "R22"
 			(at 250.0 87.38 0)
 			(effects
 				(font
@@ -9667,7 +9667,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "R_M2F")
+					(reference "R22")
 					(unit 1)
 				)
 			)
@@ -10004,7 +10004,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "197a4c33-43dc-4ee2-a8af-23b238838c60")
-		(property "Reference" "C_M1_CP"
+		(property "Reference" "C20"
 			(at 250 162.38 0)
 			(effects
 				(font
@@ -10056,7 +10056,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "C_M1_CP")
+					(reference "C20")
 					(unit 1)
 				)
 			)
@@ -10093,7 +10093,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "2472a8af-1e28-4172-ba83-cd92a8c1d2a4")
-		(property "Reference" "C_M1_VCP"
+		(property "Reference" "C21"
 			(at 250 172.38 0)
 			(effects
 				(font
@@ -10145,7 +10145,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "C_M1_VCP")
+					(reference "C21")
 					(unit 1)
 				)
 			)
@@ -10182,7 +10182,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "54fcf1c9-b90c-40f0-8948-9cf5c3c11488")
-		(property "Reference" "C_M1_V3"
+		(property "Reference" "C22"
 			(at 250 182.38 0)
 			(effects
 				(font
@@ -10234,7 +10234,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "C_M1_V3")
+					(reference "C22")
 					(unit 1)
 				)
 			)
@@ -10271,7 +10271,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "602049ad-f55e-42ff-b47f-ca51374c7041")
-		(property "Reference" "C_M2_CP"
+		(property "Reference" "C23"
 			(at 260 162.38 0)
 			(effects
 				(font
@@ -10323,7 +10323,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "C_M2_CP")
+					(reference "C23")
 					(unit 1)
 				)
 			)
@@ -10360,7 +10360,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "fdaa92ba-6a64-41bf-81c3-568465aed6f6")
-		(property "Reference" "C_M2_VCP"
+		(property "Reference" "C24"
 			(at 260 172.38 0)
 			(effects
 				(font
@@ -10412,7 +10412,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "C_M2_VCP")
+					(reference "C24")
 					(unit 1)
 				)
 			)
@@ -10449,7 +10449,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "0e910869-6fae-4958-9b5b-a278c92aa012")
-		(property "Reference" "C_M2_V3"
+		(property "Reference" "C25"
 			(at 260 182.38 0)
 			(effects
 				(font
@@ -10501,7 +10501,7 @@
 		(instances
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
-					(reference "C_M2_V3")
+					(reference "C25")
 					(unit 1)
 				)
 			)
@@ -10665,6 +10665,71 @@
 			(project "base-controller"
 				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
 					(reference "#PWR02")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:PWR_FLAG")
+		(at 30.48 25.4 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "3031f4a4-3a3f-4142-b9c4-612a6420846f")
+		(property "Reference" "#FLG06"
+			(at 30.48 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 30.48 22.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 30.48 25.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 25.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 25.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "1a5f33ee-b910-4b24-82b0-b8b5240d8eea")
+		)
+		(instances
+			(project "base-controller"
+				(path "/55781a01-ec4c-4142-82a0-551a2838e2ee"
+					(reference "#FLG06")
 					(unit 1)
 				)
 			)
@@ -10915,7 +10980,17 @@
 		(effects (font (size 1.2 1.2)) (justify left bottom))
 		(uuid "37b826d0-dddd-4260-94f9-5907acf0e0f6")
 	)
-	(sheet_instances
+		(wire
+		(pts
+			(xy 30.48 20.32) (xy 30.48 25.4)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "52208b47-e6b1-419e-b008-ddfbed884b9c")
+	)
+(sheet_instances
 		(path "/"
 			(page "1")
 		)

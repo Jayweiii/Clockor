@@ -19,3 +19,17 @@ Measured 2026-11-01 (America/Los_Angeles) with KiCad 9.0.7 `kicad-cli sch erc --
 4. **footprint_link_issues** (base, 3) — Harmless footprint filter / link warnings on connectors; footprints resolve in PCB + netlist.
 
 Do **not** waive `pin_to_pin`, `pin_not_connected`, `label_dangling`, or `power_pin_not_driven` at error severity — those were driven to zero before commit.
+
+## Ref renames (2026-11-01)
+
+KiBot’s schematic loader requires `PREFIX+digits` refs. Renamed on base-controller:
+
+| Old | New |
+|-----|-----|
+| R_EN | R20 |
+| R_M1F | R21 |
+| R_M2F | R22 |
+| C_M1_CP / VCP / V3 | C20 / C21 / C22 |
+| C_M2_CP / VCP / V3 | C23 / C24 / C25 |
+
+Also added `PWR_FLAG` `#FLG06` on `+5V` so KiBot’s older ERC engine (stricter than kicad-cli 9) sees a driven power pin.

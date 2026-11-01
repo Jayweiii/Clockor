@@ -672,9 +672,9 @@ def build_base_sch(outdir: Path):
     two_pin("R", "R3", "4.7k", (130.0, 90.0), FP["R"], "I2C0_SCL", "+3V3")
     two_pin("R", "R4", "1k", (40.0, 140.0), FP["R"], "BUCK_FB", "GND")
     two_pin("R", "R5", "3.01k", (50.0, 140.0), FP["R"], "BUCK_FB", "+5V")
-    two_pin("R", "R_EN", "10k", (40.0, 90.0), FP["R"], "EN_ESP", "+3V3")
-    two_pin("R", "R_M1F", "10k", (250.0, 30.0), FP["R"], "M1_nFAULT", "+3V3")
-    two_pin("R", "R_M2F", "10k", (250.0, 95.0), FP["R"], "M2_nFAULT", "+3V3")
+    two_pin("R", "R20", "10k", (40.0, 90.0), FP["R"], "EN_ESP", "+3V3")
+    two_pin("R", "R21", "10k", (250.0, 30.0), FP["R"], "M1_nFAULT", "+3V3")
+    two_pin("R", "R22", "10k", (250.0, 95.0), FP["R"], "M2_nFAULT", "+3V3")
 
     two_pin("SW_Push", "SW1", "BOOT", (70.0, 90.0), FP["SW"], "BOOT", "GND")
     two_pin("SW_Push", "SW2", "MODE", (80.0, 90.0), FP["SW"], "MODE_BTN", "GND")
