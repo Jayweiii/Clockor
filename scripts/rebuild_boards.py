@@ -420,8 +420,8 @@ def write_sym_lib_table(path: Path, extras: list[tuple[str, str]]):
     write(path, "\n".join(rows) + "\n")
 
 # =========================================================================
-# BASE CONTROLLER SCHEMATIC — HYBRID v0.3
-# Minute: 1× DRV8313 + AS5600 on I2C0. Hour: ULN2003A + 28BYJ-48.
+# BASE CONTROLLER SCHEMATIC — HYBRID v0.5
+# Minute: 1× DRV8313 + AS5600 on I2C0. Hour: ULN2003A + 28BYJ-48 off-axis 1:1 dial stub + AH1806 home.
 # No TCA9548A. No second BLDC. No hour rotor board.
 # =========================================================================
 def build_base_sch(outdir: Path):
@@ -446,6 +446,8 @@ def build_base_sch(outdir: Path):
         "HDR4": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
         "HDR5": "Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical",
         "HDR6": "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
+        "HDR3": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+        "AH1806-W": "Package_TO_SOT_SMD:SC-59",
     }
     if (KICAD_FP / "Connector_BarrelJack.pretty").exists():
         barrels = list((KICAD_FP / "Connector_BarrelJack.pretty").glob("*.kicad_mod"))
@@ -454,7 +456,8 @@ def build_base_sch(outdir: Path):
 
     syms = [
         "ESP32-S3-WROOM-1", "XL4015", "AMS1117-3.3", "DRV8313", "ULN2003A",
-        "USB_C_Receptacle_USB2.0_16P", "Barrel_Jack", "Conn_01x04", "Conn_01x05",
+        "USB_C_Receptacle_USB2.0_16P", "Barrel_Jack", "Conn_01x04", "Conn_01x05", "Conn_01x03",
+        "AH1806-W",
         "R", "C", "C_Polarized", "D", "L", "LED", "SW_Push",
         "GND", "+3V3", "+5V", "PWR_FLAG",
     ]
@@ -511,6 +514,7 @@ def build_base_sch(outdir: Path):
         ("7", "HR_IN1"), ("8", "HR_IN2"), ("9", "HR_IN3"), ("10", "HR_IN4"),
         ("23", "MODE_BTN"), ("18", "STATUS_LED"),
         ("16", "M1_nFAULT"),  # GPIO13 sense
+        ("19", "HR_HOME"),    # GPIO14 — hour home hall (AH1806 at dial)
     ]
     used_esp = {"1", "2", "3", "13", "14", "27", "12", "17", "40", "41", "39", "38"}
     for pn, net in gpio_map:
@@ -634,6 +638,17 @@ def build_base_sch(outdir: Path):
     # Hour stepper 5-pin: common + 4 coils
     hdr("J8", (160.0, 140.0), ["VIN_12V", "HR_OUT1", "HR_OUT2", "HR_OUT3", "HR_OUT4"], "Conn_01x05", "HDR5")
 
+    # Hour home: AH1806 at dial plate (magnet on hour stub) — U6 on PCB or fly to dial; J9 breakout
+    u6 = (180.0, 160.0)
+    hall = resolve_symbol("AH1806-W")
+    parts.append(instance("AH1806-W", "U6", "AH1806-W-7", u6[0], u6[1], pin_numbers(hall), FP["AH1806-W"]))
+    hp = pin_positions(hall, "AH1806-W", u6)
+    for pn, net in [("1", "+3V3"), ("2", "HR_HOME"), ("3", "GND")]:
+        if pn in hp:
+            parts.append(connect_label_to_pin(net, hp[pn]))
+    two_pin("R", "R22", "10k", (200.0, 160.0), FP["R"], "HR_HOME", "+3V3")
+    hdr("J9", (220.0, 160.0), ["+3V3", "GND", "HR_HOME"], "Conn_01x03", "HDR3")
+
     # Slip aliases
     parts.append(wire(90, 150, 110, 150))
     parts.append(label("+5V", 90, 150))
@@ -686,13 +701,13 @@ def build_base_sch(outdir: Path):
     drive_net(parts, pwr_counter, "GND", 45.72, 20.32, with_flag=True)
     drive_net(parts, pwr_counter, "VIN_12V", 15.24, 114.3)
 
-    parts.append(text(10, 10, "POV Clock — Base Controller HYBRID v0.3", 2.0))
-    parts.append(text(10, 15, "ESP32-S3 + XL4015 + AMS1117 + DRV8313 (2204 BLDC) + ULN2003A (hour stepper)", 1.2))
+    parts.append(text(10, 10, "POV Clock — Base Controller HYBRID v0.5", 2.0))
+    parts.append(text(10, 15, "ESP32-S3 + DRV8313 + ULN2003A + hour-home AH1806 (U6/J9); 1:1 dial stub hour drive", 1.2))
     parts.append(text(10, 18, "No TCA9548A — AS5600 on I2C0; I2C1 breakout. Single slip ring to minute bar.", 1.0))
 
     body = sch_header("POV Clock — Base Controller (Hybrid)")
     # bump rev in header via replace
-    body = body.replace('(rev "0.2")', '(rev "0.3")')
+    body = body.replace('(rev "0.2")', '(rev "0.5")')
     body += lib_symbols_section(syms) + "\n"
     body += "".join(parts)
     body += sch_footer()
@@ -890,7 +905,7 @@ def build_hand_sch(outdir: Path, which: str, length_mm: int, led_count: int):
         prev_do, prev_co = do, co
 
     body = sch_header(f"POV Clock Minute Bar ({which}, {length_mm}mm, {led_count}x APA102)", paper="A2")
-    body = body.replace('(rev "0.2")', '(rev "0.3")')
+    body = body.replace('(rev "0.2")', '(rev "0.5")')
     body += lib_symbols_section(syms) + "\n"
     body += "".join(parts)
     body += sch_footer()
@@ -970,7 +985,7 @@ def pcb_header(title: str) -> str:
 \t(title_block
 \t\t(title "{title}")
 \t\t(date "{DATE}")
-\t\t(rev "0.3")
+\t\t(rev "0.5")
 \t\t(company "Jason / clockor")
 \t\t(comment 1 "Hybrid v0.3 — placed; route via Freerouting")
 \t)

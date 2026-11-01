@@ -28,3 +28,24 @@ Also: single DRV8313 + **ULN2003A** for 28BYJ-48; CI matrix / place script drop 
 | 5 | Hour half-step + de-energize | Documented: half-step sequence; coils off between moves |
 
 Routing: attempted; CI DRC remains off until 0-error route (see `docs/pcb-status.md`).
+
+## 2026-11-01 — Hybrid v0.5 (Chief Round 3 full sign-off pending)
+
+| # | Must-fix | Change |
+|---|-----------|--------|
+| 1 | Hour stub axle path | Short stub in dial-center bearing; **1:1** belt/gear from off-axis 28BYJ-48; **entirely in front of bar sweep**; hollow tube removed — `docs/stack-up.md` + CAD |
+| 2 | 1:1 + hour home | Ratio **1:1 LOCKED**; **AH1806** U6 + R22 + J9 `HR_HOME` on `base-controller` |
+| 3 | Brush slip primary | **SenRing G012** primary (linked PDF: 5000 RPM / 5 A); Mercotac 205 alt with **UP-not-below-horizontal** + **mercury disposal** notes |
+| 4 | Hand-route → DRC | Careful pcbnew routing toward 0 DRC; enable CI DRC only if clean — see `docs/pcb-status.md` |
+
+## Round 3 — 2026-11-01 (full sign-off pending → PCB honesty)
+
+### Done
+- Hour path: short stub axle + dial-center bearing, **1:1** belt/gear from off-axis 28BYJ-48, entirely in front of bar sweep — `docs/stack-up.md` + `cad/build_assembly.py` (no hollow tube).
+- Hour home: AH1806 (+ magnet) on base schematic (U6 / J9 / `/HR_HOME`).
+- Slip: **SenRing G012** brush primary (linked catalog PDF; ≥5000 RPM / 5 A); Mercotac 205 alt with orientation + Hg disposal notes.
+- Boards hand-routed: **0 shorting_items** both; ERC 0 errors. Full 0 DRC **not** reached (unconnected + silk/courtyard). CI DRC remains disabled.
+
+### Remaining
+- Finish unconnected nets / hygiene → then enable KiBot DRC.
+- Order-time confirm SenRing G012 collar on Ø5 shaft; dial bearing P/N.

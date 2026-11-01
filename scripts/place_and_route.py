@@ -126,6 +126,26 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
 
     board = pcbnew.NewBoard(str(out_pcb))
     board.GetDesignSettings().SetAuxOrigin(pcbnew.VECTOR2I(0, 0))
+    ds = board.GetDesignSettings()
+    # ESP WROOM footprints use 0.2 mm drills; allow them
+    try:
+        ds.m_MinThroughDrill = mm(0.2)
+    except Exception:
+        pass
+    try:
+        ds.m_TrackMinWidth = mm(0.15)
+        ds.m_ViasMinSize = mm(0.6)
+        ds.m_ViasMinDrill = mm(0.3)
+        ds.m_CopperEdgeClearance = mm(0.3)
+        ds.m_MinClearance = mm(0.15)
+        ds.m_SolderMaskMinWidth = mm(0.0)
+        nc = ds.m_NetSettings.GetDefaultNetclass()
+        nc.SetClearance(mm(0.15))
+        nc.SetTrackWidth(mm(0.25))
+        nc.SetViaDiameter(mm(0.8))
+        nc.SetViaDrill(mm(0.4))
+    except Exception as e:
+        print("  design settings note:", e)
     add_rect_edge(board, 0, 0, width_mm, height_mm)
 
     # Create nets first
@@ -196,7 +216,7 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
         zone.Outline().AddOutline(chain)
         board.Add(zone)
 
-    add_zone("GND", pcbnew.F_Cu)
+    # GND on B.Cu only — full-board power pours short dense LED / header pads
     add_zone("GND", pcbnew.B_Cu)
 
     pcbnew.SaveBoard(str(out_pcb), board)
@@ -204,80 +224,91 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
     return out_pcb
 
 
-def base_placements(w=120.0, h=90.0):
-    """Hybrid base: 1x DRV8313 (minute BLDC) + ULN2003A (hour stepper)."""
+def base_placements(w=140.0, h=100.0):
+    """Hybrid base v0.5: spaced for courtyards; ESP antenna clear; hour home U6/J9."""
     p = {
-        "J1": (15, 12, 0),
-        "J2": (8, 45, 0),
-        "U2": (45, 14, 0),
-        "L1": (62, 14, 0),
-        "D1": (78, 14, 0),
-        "R4": (90, 10, 0),
-        "R5": (90, 16, 0),
-        "C1": (45, 28, 0),
-        "C2": (62, 28, 0),
-        "U3": (95, 14, 0),
-        "C3": (108, 10, 0),
-        "C4": (108, 18, 0),
-        "SW1": (20, 28, 0),
-        "SW2": (30, 28, 0),
-        "U1": (35, 55, 0),
-        "D2": (18, 55, 0),
-        "R1": (18, 62, 0),
-        "R20": (18, 68, 0),
-        "R2": (58, 42, 0),
-        "R3": (66, 42, 0),
-        "R6": (58, 48, 0),
-        "R7": (66, 48, 0),
-        "U5": (95, 40, 0),   # DRV8313 minute
-        "U4": (95, 68, 0),   # ULN2003A hour stepper
-        "R21": (80, 40, 0),
-        "J3": (112, 40, 0),  # BLDC 3-phase + GND
-        "J5": (55, 82, 0),   # AS5600 I2C0 (4-pin fits)
-        "J6": (70, 82, 0),   # I2C1 breakout
-        "J7": (20, 72, 0),   # slip ring 5V/GND
-        "J8": (40, 72, 0),   # stepper 5-pin
+        # Power row (top) — keep clear of ESP antenna keepout
+        "J1": (18, 14, 0),       # USB-C
+        "J2": (8, 50, 0),        # barrel
+        "U2": (50, 14, 0),       # XL4015
+        "L1": (70, 14, 0),
+        "D1": (88, 14, 0),
+        "R4": (102, 10, 0),
+        "R5": (102, 18, 0),
+        "C1": (70, 36, 0),       # away from U1 keepout
+        "C2": (70, 30, 0),
+        "U3": (118, 14, 0),      # AMS1117
+        "C3": (130, 10, 0),
+        "C4": (130, 20, 0),
+        "SW1": (18, 32, 0),
+        "SW2": (30, 32, 0),
+        # MCU — antenna toward left edge; nothing in keepout above module
+        "U1": (28, 58, 0),  # more room below for headers/caps
+        "D2": (12, 48, 0),
+        "R1": (12, 56, 0),
+        "R20": (12, 64, 0),
+        "R2": (78, 48, 0),
+        "R3": (88, 48, 0),
+        "R6": (78, 56, 0),
+        "R7": (88, 56, 0),
+        # Drivers
+        "U5": (110, 42, 0),      # DRV8313
+        "U4": (110, 72, 0),      # ULN2003A
+        "R21": (92, 42, 0),
+        "J3": (130, 42, -90),    # BLDC
+        # Bottom connectors — well spaced (no pad shorts)
+        "J5": (50, 88, 0),       # AS5600 I2C0
+        "J6": (70, 88, 0),       # I2C1
+        "J7": (20, 88, 0),       # slip 5V/GND
+        "J8": (95, 88, 0),       # stepper
+        "J9": (120, 88, 0),      # hour home breakout
+        "U6": (120, 78, 0),      # AH1806 hour home
+        "R22": (128, 78, 0),     # HR_HOME pullup
     }
-    for i, ref in enumerate(["C10", "C11", "C12", "C13", "C14", "C15"]):
-        p[ref] = (22 + i * 5, 72, 0)
+    # Bypass caps near drivers / rails — 6 mm pitch to avoid mask bridges
+    for i, ref in enumerate(["C10", "C11", "C12"]):
+        p[ref] = (55 + i * 8, 78, 0)  # clear of U1 body
+    for i, ref in enumerate(["C13", "C14", "C15"]):
+        p[ref] = (80 + i * 8, 78, 0)
     for i, ref in enumerate(["C20", "C22", "C21"]):
-        p[ref] = (80 + i * 5, 32, 0)
+        p[ref] = (88 + i * 8, 30, 0)
     return p
 
 
-def hand_placements(which: str, length_mm: float, led_count: int, hub_w=22.0, hub_l=28.0):
-    """Centered balanced minute bar: hub middle, LEDs both sides."""
+def hand_placements(which: str, length_mm: float, led_count: int, hub_w=32.0, hub_l=42.0, led_pitch=5.0):
+    """Centered balanced minute bar: roomy hub; LEDs both sides at led_pitch."""
     total = hub_l + length_mm + 5.0
     cx = total / 2.0
     cy = hub_w / 2.0
+    # Hub: keep SW1 / passives clear of ESP-C3 antenna keepout (module top)
     p = {
-        "U1": (cx - 6, cy - 4, 0),
-        "U2": (cx + 6, cy - 4, 0),
-        "U3": (cx - 6, cy + 5, 0),
-        "U4": (cx + 6, cy + 5, 0),  # AH1806 hall
-        "J1": (cx, cy, -90),
-        "SW1": (cx - 10, cy - 8, 0),
-        "R1": (cx + 10, cy - 8, 0),
-        "R2": (cx + 12, cy + 2, 0),
-        "C1": (cx - 10, cy + 8, 0),
-        "C2": (cx - 6, cy + 8, 0),
-        "C3": (cx + 2, cy + 8, 0),
-        "C4": (cx + 6, cy + 8, 0),
-        "C5": (cx + 10, cy + 8, 0),  # 470uF bulk
-        "D40": (cx + 14, cy + 8, 0),  # SMAJ5.0A TVS
+        "U1": (cx - 6, cy + 2, 0),          # ESP32-C3
+        "U2": (cx + 14, cy - 8, 0),      # ME6211
+        "U3": (cx + 14, cy + 8, 0),      # 74AHCT125
+        "U4": (cx - 16, cy + 10, 0),     # AH1806
+        "J1": (cx + 6, cy - 10, 0),      # slip header clear of U1
+        "SW1": (cx - 18, cy + 10, 0),    # south of module, clear of antenna keepout
+        "R1": (cx + 18, cy - 10, 0),
+        "R2": (cx + 18, cy + 2, 0),
+        "C1": (cx - 16, cy - 2, 0),
+        "C2": (cx - 10, cy + 12, 0),
+        "C3": (cx + 2, cy + 12, 0),
+        "C4": (cx + 10, cy + 12, 0),
+        "C5": (cx + 18, cy + 12, 0),
+        "D40": (cx + 18, cy - 4, 0),
     }
     for i in range(9):
-        p[f"Cd{i+1}"] = (cx - 16 + i * 4, cy - 9, 0)
+        p[f"Cd{i+1}"] = (cx - 20 + i * 5.0, cy - 14, 0)
     n_side = led_count // 2
+    hub_clear = hub_l / 2.0 + 2.0
     for i in range(n_side):
-        p[f"D{i+1}"] = (cx - 8 - i * 3.5, cy, 0)
+        p[f"D{i+1}"] = (cx - hub_clear - i * led_pitch, cy, 0)
     for i in range(n_side):
-        p[f"D{n_side + i + 1}"] = (cx + 8 + i * 3.5, cy, 0)
-    # balance trim pads at bar tips
-    p["TP1"] = (3, cy - 3, 0)
-    p["TP2"] = (3, cy + 3, 0)
-    p["TP3"] = (total - 3, cy - 3, 0)
-    p["TP4"] = (total - 3, cy + 3, 0)
+        p[f"D{n_side + i + 1}"] = (cx + hub_clear + i * led_pitch, cy, 0)
+    p["TP1"] = (3, cy - 5, 0)
+    p["TP2"] = (3, cy + 5, 0)
+    p["TP3"] = (total - 3, cy - 5, 0)
+    p["TP4"] = (total - 3, cy + 5, 0)
     return p
 
 
@@ -334,12 +365,15 @@ def main():
             "-o", str(net), "--format", "kicadsexpr",
         ])
 
-    place_board("base-controller", 120, 90, base_placements())
+    place_board("base-controller", 140, 100, base_placements())
+    led_pitch = 5.0
+    hub_l, hub_w = 42.0, 32.0
+    led_span = 36 * led_pitch
     place_board(
         "hand-minute",
-        28 + 36 * 3.5 + 5,
-        22,
-        hand_placements("minute", 36 * 3.5, 36),
+        hub_l + led_span + 5,
+        hub_w,
+        hand_placements("minute", led_span, 36, hub_w=hub_w, hub_l=hub_l, led_pitch=led_pitch),
     )
 
     # Freerouting CLI v2.5 native crashes (GraalVM ComponentOutline serialize); set CLOCKOR_FREEROUTE=1 to attempt.

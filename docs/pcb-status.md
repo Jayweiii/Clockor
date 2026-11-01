@@ -1,38 +1,29 @@
-# PCB status (hybrid v0.4)
+# PCB status — Clockor Round 3 (2026-11-01)
 
-## Placement
+## Goal
+Hand-route both boards (KiCad `pcbnew` Python) toward **0 DRC**, enable DRC in CI only if clean. If not reachable, get as close as possible **without shorts** and report honestly.
 
-`scripts/place_and_route.py` builds each `.kicad_pcb` from the KiCad sexpr netlist (`review/*.net`): footprints via pcbnew, pads net-assigned, Edge.Cuts, GND zones outlined. Minute bar is **center-hub / LEDs both sides**. J7/J8 moved so 5-pin connectors stay inside the 120×90 mm outline.
+## Result (honest)
 
-| Board | Footprints | Tracks | Notes |
-|-------|------------|--------|-------|
-| base-controller | 39 | 0 | 1× DRV8313 + ULN2003A |
-| hand-minute | 63 | 0 | Hall, 470µF+TVS, balance pads |
+| Board | ERC errors | ERC warnings | DRC `shorting_items` | Other DRC | Unconnected |
+|-------|------------|--------------|----------------------|-----------|-------------|
+| `base-controller` | **0** | ~217 (mostly `endpoint_off_grid`, `lib_symbol_issues`) | **0** | ~108 (courtyard, silk, hole clearance, dangling vias, …) | ~94 |
+| `hand-minute` | **0** | ~406 (same classes) | **0** | ~49 (silk/text/courtyard) | ~229 |
 
-## Routing attempt (Round 2)
+**Shorts cleared.** Both boards reach **0 `shorting_items`** after pad-aware careful routing + placement fixes (bypass caps / headers clear of MCU pads; hand slip header clear of ESP32-C3).
 
-| Method | Result |
-|--------|--------|
-| Specctra **DSN export** | OK (pcbnew.ExportSpecctraDSN) |
-| Freerouting CLI v2.5.0 (`CLOCKOR_FREEROUTE=1`) | **Crash**: GraalVM `SerializationConstructorAccessor` / `ComponentOutline`; also warned J8 pad outside outline (fixed in place). No `.ses` produced. |
-| `scripts/simple_route.py` MST L-routes | Connected many nets; **DRC shorts/crossings hundreds** — copper **reverted**; script kept for iteration. |
+**0 full DRC is not reachable** with the current auto-MST / LED-spine router and dense hub placement: many nets remain unconnected, plus silk/courtyard/hole hygiene. **CI `run_drc` stays `false`** in `kibot.yml` — enabling it would fail the pipeline. Local reports live in `review/*_drc.rpt` / `review/*_erc.rpt`.
 
-**CI:** `run_drc: false` remains. Enable only after local DRC reports **0 errors**.
+## How routed
+- `scripts/place_and_route.py` — placements + design rules (min drill 0.2 mm, clearance 0.15 mm); GND pour on **B.Cu only** (no +5V/+3V3 pours that short LED pads).
+- `scripts/careful_route.py` — pad-obstacle L-routes, LED daisy/spines, MST for other signals, iterative short-clean.
+- Freerouting CLI skipped (GraalVM crash historically).
 
-## ERC (local `kicad-cli sch erc --severity-all`)
+## Schematic Round 3 additions (base)
+- U6 `AH1806-W-7` hour-home hall + R22 10k + J9 `Conn_01x03` → `/HR_HOME` on ESP GPIO19.
+- Hour drive documented **1:1** (no gear ratio in firmware).
 
-| Board | Errors | Warnings |
-|-------|--------|----------|
-| base-controller | 0 | ~203 |
-| hand-minute | 0 | ~406 |
-
-Waivers: `docs/erc-waivers.md`.
-
-## DRC (placed, unrouted)
-
-| Board | Violations | Unconnected |
-|-------|------------|-------------|
-| base-controller | ~57 + 122 unconnected | dominant unconnected_items |
-| hand-minute | ~268 + 289 unconnected | dominant unconnected_items |
-
-Reports: `review/*_drc.rpt`.
+## Next PCB work (not blocking schematic/mech sign-off)
+1. Manual finish of remaining unconnected nets in pcbnew (or improve router connectivity).
+2. Courtyard / silk / hole-clearance cleanup.
+3. Only then flip `kibot.yml` `run_drc: true`.
