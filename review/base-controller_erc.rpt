@@ -1,4 +1,4 @@
-ERC report (2026-11-01T09:33:31-0800, Encoding UTF8)
+ERC report (2026-11-01T09:49:23-0800, Encoding UTF8)
 
 ***** Sheet /
 [lib_symbol_issues]: The current configuration does not include the symbol library 'power'
@@ -10,7 +10,7 @@ ERC report (2026-11-01T09:33:31-0800, Encoding UTF8)
 [lib_symbol_issues]: The current configuration does not include the symbol library 'power'
     ; warning
     @(35.56 mm, 20.32 mm): Symbol #FLG03 [PWR_FLAG]
-[no_connect_connected]: A pin with a “no connection” flag is connected
+[no_connect_connected]: A pin with a "no connection" flag is connected
     ; warning
     @(35.56 mm, 20.32 mm): Symbol #FLG03 Pin 1 [Power output, Line]
     @(35.56 mm, 20.32 mm): No Connect

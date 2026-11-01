@@ -16,3 +16,15 @@
 | 8 | Driver upsize if needed | Deferred — open question if 2204 torque short |
 
 Also: single DRV8313 + **ULN2003A** for 28BYJ-48; CI matrix / place script drop hour board; ERC 0 errors on both remaining boards.
+
+## 2026-11-01 — Hybrid v0.4 (Chief Round 2 conditional sign-off)
+
+| # | Must-fix | Change |
+|---|-----------|--------|
+| 1 | Clear dial; hour off-axis; ≥5 mm gap | Dial = clear acrylic/diffuser; 28BYJ-48 **behind plate / off-axis** → gear/belt → **hollow hour shaft**; only hour hand in front; axial gap **≥5 mm** incl. hub runout documented in `docs/stack-up.md` + CAD |
+| 2 | Lock 2204 12N14P + slip ≥2 A / ≥1500 RPM | **Furitek KOMODO 2204 1400KV 12S14P**; **Mercotac 205** (4 A, **2000 RPM** datasheet) — links in `docs/lcsc_sources.md` |
+| 3 | AS5600 rear / slip other end | Magnet on shaft **rear**; Mercotac on **front**; stack-up doc |
+| 4 | Firmware interlocks | Soft-start; spin-down on hall / ESP-NOW heartbeat loss; **~1.2 A LED cap** — `docs/firmware-interlocks.md` |
+| 5 | Hour half-step + de-energize | Documented: half-step sequence; coils off between moves |
+
+Routing: attempted; CI DRC remains off until 0-error route (see `docs/pcb-status.md`).

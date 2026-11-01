@@ -31,3 +31,7 @@ SS54,Diode_SMD:D_SMA,C8678,1,base-controller:D1
 TYPE-C-31-M-12,Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12,,1,base-controller:J2
 ULN2003ADR,Package_SO:SOIC-16_3.9x9.9mm_P1.27mm,C7512,1,base-controller:U4
 XL4015E1,Package_TO_SOT_SMD:TO-263-5_TabPin3,C51661,1,base-controller:U2
+Furitek KOMODO 2204 1400KV,Minute BLDC 12S14P,1,mech,https://furitek.com/products/furitek-2204-outrunner-1400kv-motor
+Mercotac 205,Slip ring 2x4A 2000RPM,1,mech,https://www.mercotac.com/html/205.html
+28BYJ-48 5V,Hour stepper off-axis,1,mech,common
+Clear acrylic dial,Diffuser/face >=5mm gap,1,mech,local

@@ -1,0 +1,9 @@
+Clockor hybrid CAD v0.4 (Round 2)
+Z_MAG=-27.0 AS5600 magnet rear
+Z_MOTOR=-19.0 Furitek 2204
+Z_SLIP=28.0 Mercotac 205 front
+Z_BAR=48.0 POV bar
+Z_DIAL=55.5 clear acrylic (gap from bar top = 5.0 mm LOCKED incl. 1.0 mm runout budget)
+Z_HOUR_HAND=58.5 hour hand only in front of dial
+Hour drive: off-axis stepper @ x=48.0 + belt to hollow tube OD=8.0
+See docs/stack-up.md

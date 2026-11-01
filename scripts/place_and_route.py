@@ -233,10 +233,10 @@ def base_placements(w=120.0, h=90.0):
         "U4": (95, 68, 0),   # ULN2003A hour stepper
         "R21": (80, 40, 0),
         "J3": (112, 40, 0),  # BLDC 3-phase + GND
-        "J5": (55, 82, 0),   # AS5600 I2C0
+        "J5": (55, 82, 0),   # AS5600 I2C0 (4-pin fits)
         "J6": (70, 82, 0),   # I2C1 breakout
-        "J7": (20, 82, 0),   # slip ring 5V/GND
-        "J8": (35, 82, 0),   # stepper 5-pin
+        "J7": (20, 72, 0),   # slip ring 5V/GND
+        "J8": (40, 72, 0),   # stepper 5-pin
     }
     for i, ref in enumerate(["C10", "C11", "C12", "C13", "C14", "C15"]):
         p[ref] = (22 + i * 5, 72, 0)
@@ -342,7 +342,7 @@ def main():
         hand_placements("minute", 36 * 3.5, 36),
     )
 
-    # Freerouting still hangs/crashes; set CLOCKOR_FREEROUTE=1 to attempt.
+    # Freerouting CLI v2.5 native crashes (GraalVM ComponentOutline serialize); set CLOCKOR_FREEROUTE=1 to attempt.
     if os.environ.get("CLOCKOR_FREEROUTE") == "1":
         for b in ["base-controller", "hand-minute"]:
             pcb = HW / b / f"{b}.kicad_pcb"

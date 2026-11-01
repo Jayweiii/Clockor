@@ -1,32 +1,38 @@
-# PCB status (hybrid v0.3)
+# PCB status (hybrid v0.4)
 
 ## Placement
 
-`scripts/place_and_route.py` builds each `.kicad_pcb` from the KiCad sexpr netlist (`review/*.net`): footprints via pcbnew, pads net-assigned, Edge.Cuts, GND zones outlined. Minute bar is **center-hub / LEDs both sides**.
+`scripts/place_and_route.py` builds each `.kicad_pcb` from the KiCad sexpr netlist (`review/*.net`): footprints via pcbnew, pads net-assigned, Edge.Cuts, GND zones outlined. Minute bar is **center-hub / LEDs both sides**. J7/J8 moved so 5-pin connectors stay inside the 120×90 mm outline.
 
 | Board | Footprints | Tracks | Notes |
 |-------|------------|--------|-------|
 | base-controller | 39 | 0 | 1× DRV8313 + ULN2003A |
 | hand-minute | 63 | 0 | Hall, 470µF+TVS, balance pads |
 
-## Routing
+## Routing attempt (Round 2)
 
-**Not routed.** Freerouting CLI still hangs/crashes in autoroute. Follow-up: JAR freerouting or manual route, then `run_drc: true` in `kibot.yml`.
+| Method | Result |
+|--------|--------|
+| Specctra **DSN export** | OK (pcbnew.ExportSpecctraDSN) |
+| Freerouting CLI v2.5.0 (`CLOCKOR_FREEROUTE=1`) | **Crash**: GraalVM `SerializationConstructorAccessor` / `ComponentOutline`; also warned J8 pad outside outline (fixed in place). No `.ses` produced. |
+| `scripts/simple_route.py` MST L-routes | Connected many nets; **DRC shorts/crossings hundreds** — copper **reverted**; script kept for iteration. |
 
-## ERC (local `kicad-cli sch erc --severity-all`, America/Los_Angeles 2026-11-01)
+**CI:** `run_drc: false` remains. Enable only after local DRC reports **0 errors**.
+
+## ERC (local `kicad-cli sch erc --severity-all`)
 
 | Board | Errors | Warnings |
 |-------|--------|----------|
-| base-controller | 0 | 203 |
-| hand-minute | 0 | 406 |
+| base-controller | 0 | ~203 |
+| hand-minute | 0 | ~406 |
 
 Waivers: `docs/erc-waivers.md`.
 
-## DRC (local after place, still unrouted; America/Los_Angeles 2026-11-01)
+## DRC (placed, unrouted)
 
-| Board | Errors (incl. unconnected) | Warnings | Dominant |
-|-------|----------------------------|----------|----------|
-| base-controller | 170 (122 unconnected) | 8 | unconnected_items |
-| hand-minute | 444 (289 unconnected) | 113 | unconnected + clearance/silk |
+| Board | Violations | Unconnected |
+|-------|------------|-------------|
+| base-controller | ~57 + 122 unconnected | dominant unconnected_items |
+| hand-minute | ~268 + 289 unconnected | dominant unconnected_items |
 
-CI KiBot runs **ERC only** (`run_drc: false`) until routes exist. Reports: `review/*_drc.rpt`.
+Reports: `review/*_drc.rpt`.
