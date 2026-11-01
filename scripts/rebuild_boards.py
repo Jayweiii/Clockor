@@ -1090,12 +1090,12 @@ def main():
 
     # lib tables
     sym_libs = [
-        ("Clockor", str(HW / "libs" / "Clockor.kicad_sym")),
-        ("Espressif", str(HW / "libs" / "Espressif.kicad_sym")),
+        ("Clockor", "${KIPRJMOD}/../libs/Clockor.kicad_sym"),
+        ("Espressif", "${KIPRJMOD}/../libs/Espressif.kicad_sym"),
     ]
     fp_libs = [
-        ("Espressif", str(HW / "libs" / "Espressif.pretty")),
-        ("Clockor", str(HW / "libs" / "Clockor.pretty")),
+        ("Espressif", "${KIPRJMOD}/../libs/Espressif.pretty"),
+        ("Clockor", "${KIPRJMOD}/../libs/Clockor.pretty"),
     ]
     for d in (base, minute, hour):
         write_sym_lib_table(d / "sym-lib-table", sym_libs)

@@ -24,17 +24,15 @@ jobs:
         uses: INTI-CMNB/KiBot@v2_k9
         with:
           config: kibot.yml
-          dir: hardware/${{ matrix.board }}
-          schema: ${{ matrix.board }}.kicad_sch
-          board: ${{ matrix.board }}.kicad_pcb
+          dir: kibot_out/${{ matrix.board }}
+          schema: hardware/${{ matrix.board }}/${{ matrix.board }}.kicad_sch
+          board: hardware/${{ matrix.board }}/${{ matrix.board }}.kicad_pcb
+          verbose: '1'
 
       - name: Upload KiBot outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kibot-${{ matrix.board }}
-          path: |
-            hardware/${{ matrix.board }}/kibot_out
-            hardware/${{ matrix.board }}/*-erc.rpt
-            hardware/${{ matrix.board }}/*-drc.rpt
+          path: kibot_out/${{ matrix.board }}
           if-no-files-found: warn
