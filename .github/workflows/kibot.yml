@@ -16,7 +16,6 @@ jobs:
         board:
           - base-controller
           - hand-minute
-          - hand-hour
     steps:
       - uses: actions/checkout@v4
 

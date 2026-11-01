@@ -205,7 +205,7 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
 
 
 def base_placements(w=120.0, h=90.0):
-    """Spaced placements for base controller (all inside 120x90)."""
+    """Hybrid base: 1x DRV8313 (minute BLDC) + ULN2003A (hour stepper)."""
     p = {
         "J1": (15, 12, 0),
         "J2": (8, 45, 0),
@@ -227,45 +227,57 @@ def base_placements(w=120.0, h=90.0):
         "R20": (18, 68, 0),
         "R2": (58, 42, 0),
         "R3": (66, 42, 0),
-        "U4": (70, 55, 0),
-        "U5": (95, 40, 0),
-        "U6": (95, 68, 0),
+        "R6": (58, 48, 0),
+        "R7": (66, 48, 0),
+        "U5": (95, 40, 0),   # DRV8313 minute
+        "U4": (95, 68, 0),   # ULN2003A hour stepper
         "R21": (80, 40, 0),
-        "R22": (80, 68, 0),
-        "J3": (112, 40, 0),
-        "J4": (112, 68, 0),
-        "J5": (55, 82, 0),
-        "J6": (70, 82, 0),
-        "J7": (20, 82, 0),
-        "J8": (35, 82, 0),
+        "J3": (112, 40, 0),  # BLDC 3-phase + GND
+        "J5": (55, 82, 0),   # AS5600 I2C0
+        "J6": (70, 82, 0),   # I2C1 breakout
+        "J7": (20, 82, 0),   # slip ring 5V/GND
+        "J8": (35, 82, 0),   # stepper 5-pin
     }
     for i, ref in enumerate(["C10", "C11", "C12", "C13", "C14", "C15"]):
         p[ref] = (22 + i * 5, 72, 0)
     for i, ref in enumerate(["C20", "C22", "C21"]):
         p[ref] = (80 + i * 5, 32, 0)
-    for i, ref in enumerate(["C23", "C25", "C24"]):
-        p[ref] = (80 + i * 5, 78, 0)
     return p
 
 
 def hand_placements(which: str, length_mm: float, led_count: int, hub_w=22.0, hub_l=28.0):
+    """Centered balanced minute bar: hub middle, LEDs both sides."""
+    total = hub_l + length_mm + 5.0
+    cx = total / 2.0
+    cy = hub_w / 2.0
     p = {
-        "U1": (14, 8, 0),
-        "U2": (14, 16, 0),
-        "U3": (14, 4, 0),
-        "J1": (4, 11, -90),
-        "SW1": (22, 4, 0),
-        "R1": (22, 8, 0),
-        "C1": (22, 12, 0),
-        "C2": (22, 16, 0),
-        "C3": (8, 18, 0),
-        "C4": (12, 18, 0),
+        "U1": (cx - 6, cy - 4, 0),
+        "U2": (cx + 6, cy - 4, 0),
+        "U3": (cx - 6, cy + 5, 0),
+        "U4": (cx + 6, cy + 5, 0),  # AH1806 hall
+        "J1": (cx, cy, -90),
+        "SW1": (cx - 10, cy - 8, 0),
+        "R1": (cx + 10, cy - 8, 0),
+        "R2": (cx + 12, cy + 2, 0),
+        "C1": (cx - 10, cy + 8, 0),
+        "C2": (cx - 6, cy + 8, 0),
+        "C3": (cx + 2, cy + 8, 0),
+        "C4": (cx + 6, cy + 8, 0),
+        "C5": (cx + 10, cy + 8, 0),  # 470uF bulk
+        "D40": (cx + 14, cy + 8, 0),  # SMAJ5.0A TVS
     }
     for i in range(9):
-        p[f"Cd{i+1}"] = (hub_l + 2 + i * 12, hub_w - 3, 0)
-    # LEDs along arm centerline
-    for i in range(led_count):
-        p[f"D{i+1}"] = (hub_l + 3.5 + i * 3.5, hub_w / 2, 0)
+        p[f"Cd{i+1}"] = (cx - 16 + i * 4, cy - 9, 0)
+    n_side = led_count // 2
+    for i in range(n_side):
+        p[f"D{i+1}"] = (cx - 8 - i * 3.5, cy, 0)
+    for i in range(n_side):
+        p[f"D{n_side + i + 1}"] = (cx + 8 + i * 3.5, cy, 0)
+    # balance trim pads at bar tips
+    p["TP1"] = (3, cy - 3, 0)
+    p["TP2"] = (3, cy + 3, 0)
+    p["TP3"] = (total - 3, cy - 3, 0)
+    p["TP4"] = (total - 3, cy + 3, 0)
     return p
 
 
@@ -314,14 +326,13 @@ def main():
     REVIEW.mkdir(exist_ok=True)
     # Ensure netlists exist
     kcli = Path("/workspace/tools/kicad/kicad-cli")
-    for b in ["base-controller", "hand-minute", "hand-hour"]:
+    for b in ["base-controller", "hand-minute"]:
         net = REVIEW / f"{b}.net"
-        if not net.exists():
-            subprocess.check_call([
-                str(kcli), "sch", "export", "netlist",
-                str(HW / b / f"{b}.kicad_sch"),
-                "-o", str(net), "--format", "kicadsexpr",
-            ])
+        subprocess.check_call([
+            str(kcli), "sch", "export", "netlist",
+            str(HW / b / f"{b}.kicad_sch"),
+            "-o", str(net), "--format", "kicadsexpr",
+        ])
 
     place_board("base-controller", 120, 90, base_placements())
     place_board(
@@ -330,17 +341,15 @@ def main():
         22,
         hand_placements("minute", 36 * 3.5, 36),
     )
-    place_board(
-        "hand-hour",
-        28 + 30 * 3.5 + 5,
-        22,
-        hand_placements("hour", 30 * 3.5, 30),
-    )
 
-    for b in ["base-controller", "hand-minute", "hand-hour"]:
-        pcb = HW / b / f"{b}.kicad_pcb"
-        print(f"=== route {b} ===")
-        freeroute(pcb, passes=8 if b == "base-controller" else 6)
+    # Freerouting still hangs/crashes; set CLOCKOR_FREEROUTE=1 to attempt.
+    if os.environ.get("CLOCKOR_FREEROUTE") == "1":
+        for b in ["base-controller", "hand-minute"]:
+            pcb = HW / b / f"{b}.kicad_pcb"
+            print(f"=== route {b} ===")
+            freeroute(pcb, passes=8 if b == "base-controller" else 6)
+    else:
+        print("skip freeroute (set CLOCKOR_FREEROUTE=1 to attempt)")
 
 
 if __name__ == "__main__":
