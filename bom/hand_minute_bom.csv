@@ -3,7 +3,9 @@ C1,100nF,Capacitor_SMD:C_0603_1608Metric,,hand-minute
 C2,22uF,Capacitor_SMD:C_0805_2012Metric,,hand-minute
 C3,22uF,Capacitor_SMD:C_0805_2012Metric,,hand-minute
 C4,10uF,Capacitor_SMD:C_0805_2012Metric,,hand-minute
-C5,470uF,Capacitor_SMD:CP_Elec_10x10,,hand-minute
+C5,330uF 10V polymer,Capacitor_Tantalum_SMD:CP_EIA-7343-31_Kemet-D,,hand-minute
+C6,1uF,Capacitor_SMD:C_0603_1608Metric,,hand-minute
+C7,330uF 10V polymer,Capacitor_Tantalum_SMD:CP_EIA-7343-31_Kemet-D,,hand-minute
 Cd1,100nF,Capacitor_SMD:C_0603_1608Metric,,hand-minute
 Cd2,100nF,Capacitor_SMD:C_0603_1608Metric,,hand-minute
 Cd3,100nF,Capacitor_SMD:C_0603_1608Metric,,hand-minute
@@ -51,14 +53,19 @@ D35,APA102-2020,LED_SMD:LED-APA102-2020,C22439302,hand-minute
 D36,APA102-2020,LED_SMD:LED-APA102-2020,C22439302,hand-minute
 D40,SMAJ5.0A,Diode_SMD:D_SMA,C83329,hand-minute
 J1,SLIP_5V,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,hand-minute
+J2,PROG,Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical,,hand-minute
 R1,10k,Resistor_SMD:R_0603_1608Metric,,hand-minute
 R2,10k,Resistor_SMD:R_0603_1608Metric,,hand-minute
+R3,10k,Resistor_SMD:R_0603_1608Metric,,hand-minute
+R4,10k,Resistor_SMD:R_0603_1608Metric,,hand-minute
 SW1,BOOT,Button_Switch_SMD:SW_SPST_CK_RS282G05A3,,hand-minute
 TP1,BAL_PAD,TestPoint:TestPoint_Pad_D2.5mm,,hand-minute
 TP2,BAL_PAD,TestPoint:TestPoint_Pad_D2.5mm,,hand-minute
 TP3,BAL_PAD,TestPoint:TestPoint_Pad_D2.5mm,,hand-minute
 TP4,BAL_PAD,TestPoint:TestPoint_Pad_D2.5mm,,hand-minute
+TP5,C3_USB_DN,TestPoint:TestPoint_Pad_D1.0mm,,hand-minute
+TP6,C3_USB_DP,TestPoint:TestPoint_Pad_D1.0mm,,hand-minute
 U1,ESP32-C3-MINI-1-N4,Espressif:ESP32-C3-MINI-1,C2934560,hand-minute
 U2,ME6211C33M5G-N,Package_TO_SOT_SMD:SOT-23-5,C235316,hand-minute
 U3,SN74AHCT125PWR,Package_SO:TSSOP-14_4.4x5mm_P0.65mm,C5947,hand-minute
-U4,AH1806-W-7,Package_TO_SOT_SMD:SC-59,C126663,hand-minute
+U4,DRV5023FAQDBZR,Package_TO_SOT_SMD:SOT-23,,hand-minute

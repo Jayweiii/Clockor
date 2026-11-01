@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Hybrid Clockor mechanical assembly (CadQuery) — Chief Round 3 / v0.5.
+"""Hybrid Clockor mechanical assembly (CadQuery) — v0.6 coaxial redesign.
 
-Minute = spinning POV bar on solid shaft (Furitek 2204).
-Hour = short stub axle in dial-center bearing, 1:1 belt/gear from off-axis
-       28BYJ-48, entirely in front of bar sweep (no hollow tube).
-AS5600 magnet on motor shaft REAR; SenRing G012 brush slip on FRONT (Mercotac alt).
+Minute = spinning POV bar on a HOLLOW minute tube driven by a hollow-shaft
+         gimbal BLDC (2804 class, ~100 KV on a 24 V bus).
+Hour   = Ø3 mm shaft running INSIDE the minute tube (two MR63 bearings), out
+         through the bar hub and a Ø5 hole in the dial. Driven 1:1 by a
+         28BYJ-48 coaxial at the very rear through a shaft coupler.
+         Nothing but the hour hand sits in front of the dial — v0.5 put the
+         stepper, pulleys and belt on the dial face, over the POV image.
+Encoder = MagAlpha MA730 side-shaft beside a ring magnet on the minute tube
+          (the rear shaft end is taken by the hour shaft, so AS5600 end-of-shaft
+          sensing is no longer possible).
+Slip   = SenRing G012 through-bore brush ring on the minute tube (collar).
 Axial gap bar-tip plane → dial underside >= 5 mm including hub runout budget.
 """
 from pathlib import Path
@@ -20,38 +27,34 @@ CAD.mkdir(parents=True, exist_ok=True)
 
 # --- Key dims (mm) — ESTIMATE unless LOCKED ---
 BASE_OD = 180.0
-BASE_H = 22.0
+BASE_H = 72.0                # deeper base: coaxial stepper + coupler + encoder at rear
 PLATE_TH = 4.0
 ENCL_H = 60.0
 ENCL_TH = 2.5
-MINUTE_LEN = 150.0
-HOUR_LEN = 110.0
+MINUTE_LEN = 80.0             # per side (bar PCB is 160 mm overall); v0.5 drew 150 per side = 300 mm
+HOUR_LEN = 60.0               # must stay inside the dial markers (v0.5: 110 > dial radius)
 ARM_W = 10.0
 ARM_TH = 1.6
 HUB_R = 14.0
-INNER_SHAFT_D = 5.0          # solid minute shaft ESTIMATE
-HOUR_STUB_D = 3.0            # short stub axle at dial center (Round 3)
-HOUR_STUB_LEN = 12.0
-HOUR_BEARING_OD = 8.0        # small flange / thin-section at dial
-HOUR_BEARING_ID = 3.0
-HOUR_BEARING_H = 3.0
-SHAFT_LEN = 90.0             # stops at hub / slip — does NOT pierce dial for hour
+MINUTE_TUBE_OD = 6.0         # hollow minute shaft ESTIMATE (or motor hollow shaft + extension)
+MINUTE_TUBE_ID = 4.0
+HOUR_SHAFT_D = 3.0           # inner hour shaft, runs in 2× MR63 (3×6×2.5) inside the tube
 BEARING_OD = 16.0
 BEARING_ID = 5.0
 BEARING_H = 5.0
-MOTOR_OD = 28.0              # Furitek KOMODO 2204
-MOTOR_H = 19.0
-STEPPER_OFFSET = 48.0        # off-axis 28BYJ-48 (drive plane in front of dial)
-STEPPER_BODY = 28.0
-PULLEY_OD = 16.0             # 1:1 matched pulleys
+MOTOR_OD = 34.0              # hollow-shaft gimbal BLDC 2804 class ESTIMATE
+MOTOR_H = 14.0
+STEPPER_BODY = 28.0          # 28BYJ-48: Ø28 × 19 body, shaft offset 8 mm from body centre
+STEPPER_SHAFT_OFFSET = 8.0
+COUPLER_D = 10.0
 # SenRing G012 envelope ESTIMATE (through-bore brush capsule)
 SLIP_OD = 35.0
 SLIP_ID = 12.7
 SLIP_H = 22.0
-MAGNET_D = 6.0
-MAGNET_H = 2.5
-ENC_BOARD = 18.0
-DIAL_ID = 10.0               # small hole for hour stub bearing only (minute shaft stays behind)
+RING_MAG_OD = 12.0           # diametric ring magnet on minute tube (side-shaft MA730)
+RING_MAG_H = 3.0
+ENC_BOARD = 14.0
+DIAL_ID = 5.0                # clearance hole for the Ø3 hour shaft only
 DIAL_OD = BASE_OD - 18.0
 DIAL_TH = 2.0
 MARKER_INNER = DIAL_OD / 2 - 14.0
@@ -65,9 +68,12 @@ HOUR_HOME_MAG_D = 2.0
 HOUR_HOME_MAG_H = 1.0
 
 # Z stations (rear negative → front positive)
-Z_MAG = -MOTOR_H - 8.0
-Z_ENC = Z_MAG - 4.0
 Z_MOTOR = -MOTOR_H
+Z_MAG = Z_MOTOR - 8.0                       # ring magnet on minute tube, behind motor
+Z_TUBE0 = Z_MAG - 1.0                       # minute tube rear end
+Z_COUPLER = Z_TUBE0 - 12.0                  # hour coupler (+ hour-home magnet)
+Z_STEPPER_SHAFT_TIP = Z_COUPLER + 4.0
+Z_STEPPER = Z_STEPPER_SHAFT_TIP - 10.0 - 19.0   # body rear face
 Z_PLATE = 0.0
 Z_BEARING1 = 6.0
 Z_BEARING2 = 22.0
@@ -75,11 +81,9 @@ Z_SLIP = 28.0
 Z_HUB = Z_SLIP + SLIP_H + 2.0
 Z_BAR = Z_HUB
 Z_DIAL = Z_BAR + ARM_TH + LED_H + AXIAL_GAP_BAR_TO_DIAL
-Z_HOUR_BEARING = Z_DIAL
-Z_HOUR_STUB = Z_DIAL - 1.0
-Z_HOUR_PULLEY = Z_DIAL + DIAL_TH + 1.0
-Z_HOUR_HAND = Z_HOUR_PULLEY + 7.0
-Z_HOUR_STEPPER = Z_DIAL + DIAL_TH  # stepper body on dial front / bezel plane
+Z_TUBE1 = Z_HUB + ARM_TH + 1.5              # minute tube front end (well behind dial)
+Z_HOUR_HAND = Z_DIAL + DIAL_TH + 1.5        # only the hand is in front of the dial
+Z_HOUR_SHAFT1 = Z_HOUR_HAND + 2.5
 
 
 def clock_to_cq(deg_cw_from_12: float) -> float:
@@ -205,102 +209,54 @@ def bearing(z, od=BEARING_OD, id_=BEARING_ID, h=BEARING_H):
 
 
 def motor_on_axis(z):
-    body = cyl(MOTOR_OD, MOTOR_H, z)
-    rear = cyl(3.0, 6.0, z - 6.0)
-    front = cyl(INNER_SHAFT_D, 8.0, z + MOTOR_H)
-    return body.union(rear).union(front)
+    """Hollow-shaft gimbal motor: annular body, bore passes the minute tube."""
+    return tube(MOTOR_OD, MINUTE_TUBE_OD + 1.0, MOTOR_H, z)
 
 
-def stepper_off_axis(x, y, z):
-    """Stepper body on dial-front plane (in front of bar sweep)."""
-    body = (
-        cq.Workplane("XY")
-        .workplane(offset=z)
-        .center(x, y)
-        .circle(STEPPER_BODY / 2)
-        .extrude(19)
-    )
-    shaft = (
-        cq.Workplane("XY")
-        .workplane(offset=z + 19)
-        .center(x, y)
-        .circle(2.5)
-        .extrude(8)
-    )
+def stepper_coaxial(z):
+    """28BYJ-48 at the rear with its OUTPUT SHAFT on the clock axis (body offset)."""
+    body = cyl(STEPPER_BODY, 19, z).translate((0, -STEPPER_SHAFT_OFFSET, 0))
+    shaft = cyl(5.0, 10.0, z + 19)
     return body.union(shaft)
 
 
-def pulley(x, y, z, od=PULLEY_OD):
-    return (
-        cq.Workplane("XY")
-        .workplane(offset=z)
-        .center(x, y)
-        .circle(od / 2)
-        .extrude(6)
-    )
-
-
-def belt_approx(x1, y1, x2, y2, z, w=4):
-    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-    dx, dy = x2 - x1, y2 - y1
-    L = math.hypot(dx, dy)
-    ang = math.degrees(math.atan2(dy, dx))
-    return (
-        cq.Workplane("XY")
-        .workplane(offset=z)
-        .transformed(offset=(mx, my, 0), rotate=(0, 0, ang))
-        .rect(L, w)
-        .extrude(1.5)
-    )
-
-
 def build_common():
-    base = cyl(BASE_OD, BASE_H, -BASE_H)
+    base = tube(BASE_OD, BASE_OD - 2 * ENCL_TH, BASE_H, -BASE_H).union(cyl(BASE_OD, 3.0, -BASE_H))
     plate = cyl(BASE_OD - 10, PLATE_TH, Z_PLATE)
-    # solid minute shaft — rear magnet through slip/hub only (stops before dial)
-    minute_shaft = cyl(INNER_SHAFT_D, Z_HUB + 8 - Z_MAG, Z_MAG)
-    b1 = bearing(Z_BEARING1)
-    b2 = bearing(Z_BEARING2)
-    # SenRing G012-class brush through-bore on FRONT (collar on Ø5 shaft)
-    slip_rotor = tube(SLIP_ID + 4, INNER_SHAFT_D + 0.3, SLIP_H - 4, Z_SLIP + 2)
-    slip_stator = tube(SLIP_OD, SLIP_ID, SLIP_H, Z_SLIP)
-    mag = cyl(MAGNET_D, MAGNET_H, Z_MAG)
-    enc = (
-        cq.Workplane("XY")
-        .workplane(offset=Z_ENC)
-        .center(0, 0)
-        .rect(ENC_BOARD, ENC_BOARD)
-        .extrude(1.2)
+    minute_tube = tube(MINUTE_TUBE_OD, MINUTE_TUBE_ID, Z_TUBE1 - Z_TUBE0, Z_TUBE0)
+    hour_shaft = cyl(HOUR_SHAFT_D, Z_HOUR_SHAFT1 - Z_COUPLER, Z_COUPLER)
+    b1 = bearing(Z_BEARING1, id_=MINUTE_TUBE_OD)
+    b2 = bearing(Z_BEARING2, id_=MINUTE_TUBE_OD)
+    # SenRing G012-class through-bore brush ring on the minute tube (collar adapter)
+    slip_rotor = tube(SLIP_ID, MINUTE_TUBE_OD, SLIP_H - 4, Z_SLIP + 2)
+    slip_stator = tube(SLIP_OD, SLIP_ID + 0.5, SLIP_H, Z_SLIP)
+    ring_mag = tube(RING_MAG_OD, MINUTE_TUBE_OD, RING_MAG_H, Z_MAG)
+    enc = (  # MA730 satellite beside the ring magnet (side-shaft)
+        cq.Workplane("XY").workplane(offset=Z_MAG - 3.0)
+        .center(RING_MAG_OD / 2 + 2.5 + ENC_BOARD / 2, 0)
+        .rect(ENC_BOARD, ENC_BOARD).extrude(1.2)
     )
     motor = motor_on_axis(Z_MOTOR)
-    # --- Round 3 hour path: stub + dial bearing + 1:1 in front of bar ---
-    hour_brg = bearing(Z_HOUR_BEARING, HOUR_BEARING_OD, HOUR_BEARING_ID, HOUR_BEARING_H)
-    hour_stub = cyl(HOUR_STUB_D, HOUR_STUB_LEN, Z_HOUR_STUB)
-    hour_home_mag = cyl(HOUR_HOME_MAG_D, HOUR_HOME_MAG_H, Z_HOUR_STUB + HOUR_STUB_LEN - 1)
-    p_hour = pulley(0, 0, Z_HOUR_PULLEY, od=PULLEY_OD)
-    step = stepper_off_axis(STEPPER_OFFSET, 0, Z_HOUR_STEPPER)
-    p_step = pulley(STEPPER_OFFSET, 0, Z_HOUR_PULLEY)
-    belt = belt_approx(STEPPER_OFFSET, 0, 0, 0, Z_HOUR_PULLEY + 2)
+    coupler = cyl(COUPLER_D, 8.0, Z_COUPLER)
+    hour_home_mag = cyl(HOUR_HOME_MAG_D, HOUR_HOME_MAG_H, Z_COUPLER + 3.5).translate((COUPLER_D / 2, 0, 0))
+    step = stepper_coaxial(Z_STEPPER)
     encl = tube(BASE_OD - 4, BASE_OD - 4 - 2 * ENCL_TH, ENCL_H, PLATE_TH)
     dial = dial_face(Z_DIAL)
     gap_vis = tube(HUB_R * 2 + 8, HUB_R * 2 + 4, AXIAL_GAP_BAR_TO_DIAL, Z_BAR + ARM_TH + LED_H)
     return (
         base.union(plate)
-        .union(minute_shaft)
+        .union(minute_tube)
+        .union(hour_shaft)
         .union(b1)
         .union(b2)
         .union(slip_rotor)
         .union(slip_stator)
-        .union(mag)
+        .union(ring_mag)
         .union(enc)
         .union(motor)
-        .union(hour_brg)
-        .union(hour_stub)
+        .union(coupler)
         .union(hour_home_mag)
-        .union(p_hour)
         .union(step)
-        .union(p_step)
-        .union(belt)
         .union(encl)
         .union(dial)
         .union(gap_vis)
@@ -319,16 +275,18 @@ assy_pov = build_pose(POV_MINUTE_DEG, POV_HOUR_DEG)
 assy = assy_clock
 
 exploded = (
-    cyl(BASE_OD, BASE_H, -BASE_H)
+    cyl(BASE_OD, 3.0, -BASE_H)
     .union(cyl(BASE_OD - 10, PLATE_TH, 0))
-    .union(dial_face(Z_DIAL).translate((0, 0, 20)))
-    .union(minute_hand(MINUTE_LEN, Z_BAR, MINUTE_CLOCK_DEG).translate((0, 0, 35)))
-    .union(hour_hand_only(HOUR_LEN, Z_HOUR_HAND, HOUR_CLOCK_DEG).translate((0, 0, 50)))
-    .union(motor_on_axis(Z_MOTOR).translate((0, 0, -15)))
-    .union(stepper_off_axis(STEPPER_OFFSET, 0, Z_HOUR_STEPPER).translate((30, 0, 15)))
-    .union(tube(SLIP_OD, SLIP_ID, SLIP_H, Z_SLIP).translate((45, 0, 0)))
-    .union(cyl(HOUR_STUB_D, HOUR_STUB_LEN, Z_HOUR_STUB).translate((0, 0, 40)))
-    .union(cyl(MAGNET_D, MAGNET_H, Z_MAG).translate((0, 0, -25)))
+    .union(dial_face(Z_DIAL).translate((0, 0, 30)))
+    .union(minute_hand(MINUTE_LEN, Z_BAR, MINUTE_CLOCK_DEG).translate((0, 0, 15)))
+    .union(hour_hand_only(HOUR_LEN, Z_HOUR_HAND, HOUR_CLOCK_DEG).translate((0, 0, 45)))
+    .union(motor_on_axis(Z_MOTOR))
+    .union(tube(MINUTE_TUBE_OD, MINUTE_TUBE_ID, Z_TUBE1 - Z_TUBE0, Z_TUBE0).translate((0, 0, 8)))
+    .union(cyl(HOUR_SHAFT_D, Z_HOUR_SHAFT1 - Z_COUPLER, Z_COUPLER).translate((0, 0, 22)))
+    .union(tube(SLIP_OD, SLIP_ID + 0.5, SLIP_H, Z_SLIP).translate((50, 0, 0)))
+    .union(tube(RING_MAG_OD, MINUTE_TUBE_OD, RING_MAG_H, Z_MAG).translate((0, 0, -8)))
+    .union(cyl(COUPLER_D, 8.0, Z_COUPLER).translate((0, 0, -14)))
+    .union(stepper_coaxial(Z_STEPPER).translate((0, 0, -26)))
 )
 
 half = cq.Workplane("XY").box(
@@ -344,16 +302,16 @@ exporters.export(exploded, str(CAD / "pov_clock_exploded.stl"))
 exporters.export(section, str(CAD / "pov_clock_section.stl"))
 
 (CAD / "STACK_UP_NOTES.txt").write_text(
-    f"""Clockor hybrid CAD v0.5 (Round 3)
-Z_MAG={Z_MAG} AS5600 magnet rear
-Z_MOTOR={Z_MOTOR} Furitek 2204
-Z_SLIP={Z_SLIP} SenRing G012 brush front (Mercotac 205 alt)
-Z_BAR={Z_BAR} POV bar
-Z_DIAL={Z_DIAL} clear acrylic (gap from bar top = {AXIAL_GAP_BAR_TO_DIAL} mm LOCKED incl. {HUB_RUNOUT_BUDGET} mm runout budget)
-Z_HOUR_STUB={Z_HOUR_STUB} short stub axle @ dial center bearing OD={HOUR_BEARING_OD}
-Z_HOUR_HAND={Z_HOUR_HAND} hour hand in front of dial
-Hour drive: 1:1 belt @ Z_HOUR_PULLEY={Z_HOUR_PULLEY} from stepper @ x={STEPPER_OFFSET} — entirely in front of bar sweep
-NO hollow hour tube around minute shaft
+    f"""Clockor hybrid CAD v0.6 (coaxial hour shaft)
+Z_STEPPER={Z_STEPPER} 28BYJ-48 body rear face, output shaft on axis
+Z_COUPLER={Z_COUPLER} hour coupler + hour-home magnet (hall on J9)
+Z_MAG={Z_MAG} ring magnet on minute tube, MA730 side-shaft (J10)
+Z_MOTOR={Z_MOTOR} hollow-shaft gimbal BLDC 2804 class
+Z_SLIP={Z_SLIP} SenRing G012 through-bore brush ring on minute tube
+Z_BAR={Z_BAR} POV bar (hub on minute tube)
+Z_DIAL={Z_DIAL} clear acrylic, centre hole D={DIAL_ID} (gap from bar top = {AXIAL_GAP_BAR_TO_DIAL} mm LOCKED incl. {HUB_RUNOUT_BUDGET} mm runout budget)
+Z_HOUR_HAND={Z_HOUR_HAND} hour hand — the ONLY part in front of the dial
+Hour shaft D={HOUR_SHAFT_D} inside minute tube {MINUTE_TUBE_OD}/{MINUTE_TUBE_ID}, 1:1 direct coupling (no belt)
 See docs/stack-up.md
 """
 )
@@ -389,10 +347,10 @@ export_svg(assy_clock, "clock_front.svg", (0, 0, 1))
 export_svg(assy_pov, "pov_iso.svg", (1.2, -1.5, 1.0))
 export_svg(assy_pov, "pov_front.svg", (0, 0, 1))
 export_svg(exploded, "exploded.svg", (1.2, -1.5, 1.0))
-export_svg(section, "section.svg", (0.2, -1.0, 0.15))
+export_svg(section, "section.svg", (0.0, 1.0, 0.0))
 export_svg(assy_clock, "front.svg", (0, -1, 0))
-print("CAD v0.5 OK — hybrid Round 3 stub-axle hour + SenRing slip")
+print("CAD v0.6 OK — coaxial hour shaft, hollow gimbal BLDC, SenRing slip")
 print(f"LOCKED axial gap bar→dial = {AXIAL_GAP_BAR_TO_DIAL} mm (Z_DIAL={Z_DIAL}, Z_BAR={Z_BAR})")
-print(f"Hour 1:1 drive plane Z={Z_HOUR_PULLEY} (in front of bar Z={Z_BAR})")
+print(f"Hour hand Z={Z_HOUR_HAND}; nothing else in front of dial Z={Z_DIAL}")
 for p in sorted(CAD.glob("pov_*")) + sorted(CAD.glob("STACK*")):
     print(p.name, p.stat().st_size)

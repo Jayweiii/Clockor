@@ -1,5 +1,5 @@
 Ref,Value,Footprint,LCSC,Board
-C1,470uF,Capacitor_SMD:CP_Elec_10x10,,base-controller
+C1,470uF 35V,Capacitor_SMD:CP_Elec_10x10,,base-controller
 C2,470uF,Capacitor_SMD:CP_Elec_10x10,,base-controller
 C3,22uF,Capacitor_SMD:C_0805_2012Metric,,base-controller
 C4,10uF,Capacitor_SMD:C_0805_2012Metric,,base-controller
@@ -12,8 +12,14 @@ C15,100nF,Capacitor_SMD:C_0603_1608Metric,,base-controller
 C20,10nF,Capacitor_SMD:C_0603_1608Metric,,base-controller
 C21,100nF,Capacitor_SMD:C_0603_1608Metric,,base-controller
 C22,470nF,Capacitor_SMD:C_0603_1608Metric,,base-controller
+C23,100nF 50V,Capacitor_SMD:C_0603_1608Metric,,base-controller
+C24,100nF 50V,Capacitor_SMD:C_0603_1608Metric,,base-controller
+C25,10uF 50V,Capacitor_SMD:C_1206_3216Metric,,base-controller
+C26,100nF,Capacitor_SMD:C_0603_1608Metric,,base-controller
+C27,1uF 50V,Capacitor_SMD:C_0805_2012Metric,,base-controller
 D1,SS54,Diode_SMD:D_SMA,C8678,base-controller
 D2,LED_R,LED_SMD:LED_0603_1608Metric,,base-controller
+D3,SS34,Diode_SMD:D_SMA,,base-controller
 J1,DC005-2.5,Connector_BarrelJack:BarrelJack_CUI_PJ-036AH-SMT_Horizontal,,base-controller
 J2,TYPE-C-31-M-12,Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12,,base-controller
 J3,Conn_01x04,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,base-controller
@@ -21,6 +27,8 @@ J5,Conn_01x04,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,base-c
 J6,Conn_01x04,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,base-controller
 J7,Conn_01x04,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,base-controller
 J8,Conn_01x05,Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical,,base-controller
+J9,Conn_01x03,Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical,,base-controller
+J10,Conn_01x06,Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical,,base-controller
 L1,47uH,Inductor_SMD:L_TaiTech_TMPC1265_13.5x12.5mm,,base-controller
 R1,1k,Resistor_SMD:R_0603_1608Metric,,base-controller
 R2,4.7k,Resistor_SMD:R_0603_1608Metric,,base-controller
@@ -31,6 +39,11 @@ R6,4.7k,Resistor_SMD:R_0603_1608Metric,,base-controller
 R7,4.7k,Resistor_SMD:R_0603_1608Metric,,base-controller
 R20,10k,Resistor_SMD:R_0603_1608Metric,,base-controller
 R21,10k,Resistor_SMD:R_0603_1608Metric,,base-controller
+R22,10k,Resistor_SMD:R_0603_1608Metric,,base-controller
+R23,5.1k,Resistor_SMD:R_0603_1608Metric,,base-controller
+R24,5.1k,Resistor_SMD:R_0603_1608Metric,,base-controller
+R25,10k,Resistor_SMD:R_0603_1608Metric,,base-controller
+R26,10k,Resistor_SMD:R_0603_1608Metric,,base-controller
 SW1,BOOT,Button_Switch_SMD:SW_SPST_CK_RS282G05A3,,base-controller
 SW2,MODE,Button_Switch_SMD:SW_SPST_CK_RS282G05A3,,base-controller
 U1,ESP32-S3-WROOM-1-N16R8,RF_Module:ESP32-S3-WROOM-1,C2913202,base-controller
@@ -38,3 +51,4 @@ U2,XL4015E1,Package_TO_SOT_SMD:TO-263-5_TabPin3,C51661,base-controller
 U3,AMS1117-3.3,Package_TO_SOT_SMD:SOT-223-3_TabPin2,C6186,base-controller
 U4,ULN2003ADR,Package_SO:SOIC-16_3.9x9.9mm_P1.27mm,C7512,base-controller
 U5,DRV8313PWPR,Package_SO:HTSSOP-28-1EP_4.4x9.7mm_P0.65mm_EP3.4x9.5mm_ThermalVias,C92482,base-controller
+U7,USBLC6-2SC6,Package_TO_SOT_SMD:SOT-23-6,,base-controller

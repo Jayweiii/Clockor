@@ -1,20 +1,21 @@
-# Open questions (hybrid v0.5)
+# Open questions (hybrid v0.6)
 
-## Closed in Round 2 / Round 3
-- BLDC P/N → **Furitek KOMODO 2204 1400KV 12S14P**.
-- Slip ring → **SenRing G012 brush PRIMARY** (≥5000 RPM, 5 A, linked PDF); **Mercotac 205 ALT** with orientation + Hg disposal notes.
-- Hour mount → **stub axle** at dial-center bearing, **1:1** off-axis drive, entirely in front of bar sweep (no hollow tube).
-- Hour home → **AH1806** on base schematic (U6 / J9).
-- AS5600 magnet → shaft **rear**; slip on **front**.
-- Firmware interlocks + hour half-step / coil de-energize documented.
-- Axial gap → **≥5 mm** bar tip to dial incl. runout.
+## Closed in v0.6
+- Hour drive: **coaxial Ø3 hour shaft** inside a hollow minute tube, 28BYJ-48 at the rear, direct 1:1 coupler. Replaces the v0.5 front stub + belt, which covered the POV image.
+- Minute motor: **hollow-shaft gimbal BLDC ~100 KV on 24 V** (replaces the Furitek 2204 1400 KV).
+- Minute encoder: **MA730 side-shaft** on SPI (`J10`); AS5600 kept as a bench fallback on `J5`.
+- Rotor index: **DRV5023** (always-on), replacing AH1806 (duty-cycled).
+- Programming: rotor `J2` UART header + USB pogo pads; base USB-C fixed.
+- All v0.5 schematic defects in `docs/design-review-v0.6.md` §2 are fixed in the generator.
 
 ## Still open
-1. **Exact stub bearing / pulley P/Ns** — flange bearing + GT2 1:1 pulley tooth count for dial thickness.
-2. **SenRing shaft adapter** — collar for Ø5 shaft into 12.7 mm bore (or custom stub).
-3. **Measured hub runout** — confirm ≥5 mm gap after balance.
-4. **DRV8313 margin** — DRV8316 + sense only if torque short.
-5. **TPS54560** — only if XL4015 thermals fail.
-6. **Guard / hub CAD detail** — clamp hub STEP + polycarbonate guard before first spin test.
-7. **PCB DRC** — see `docs/pcb-status.md`; enable CI `run_drc` only at 0 errors (or report honest near-miss).
-8. **Firmware implementation** — interlocks specified; code not yet written.
+1. **Gimbal motor bore**: confirm the purchased motor's hollow shaft passes a Ø3 shaft (or a Ø6 tube). If not, use a 4108-class hollow motor.
+2. **MA730 side-shaft accuracy** with a 12/6 ring magnet; ±1° is plenty for parking a minute hand.
+3. **XL4015 VC pin**: v0.6 follows the typical-application circuit (1 µF VC→VIN). Confirm against the XLSEMI datasheet before layout.
+4. **SenRing shaft collar**: 12.7 mm bore → Ø6 tube collar design.
+5. **Measured hub runout**: confirm the ≥ 5 mm gap after balancing.
+6. **Guard / hub CAD**: clamp hub STEP + polycarbonate guard before the first spin test.
+7. **PCB re-layout**: both boards need "Update PCB from Schematic" + hand routing (`docs/pcb-status.md`).
+8. **Firmware**: interlocks specified (`docs/firmware-interlocks.md`), code not written.
+9. **LCSC ids** for the new parts (DRV5023, USBLC6, SS34, polymer caps, MA730).
+10. **VIN monitor**: an ADC divider on VIN_24V would let firmware refuse spin-up on a low supply (not in v0.6).

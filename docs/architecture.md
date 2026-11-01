@@ -1,67 +1,96 @@
-# Clockor hybrid architecture (v0.5 — Chief Round 3)
+# Clockor hybrid architecture (v0.6 — redesign)
 
-Jason chose **hybrid** hands: POV graphics stay simple; a normal clock still reads at a glance.
+Hybrid hands: a **spinning POV bar** shows the minute (and graphics), a **slow
+physical hour hand** reads at a glance. v0.6 keeps that concept and fixes the
+v0.5 electrical bugs and the hour-drive layout. Full rationale:
+`docs/design-review-v0.6.md`.
 
-## Mechanical arrangement
+## Mechanical arrangement (coaxial)
 
-### Dial and axial clearance
-- **Dial** = **clear acrylic / diffuser** (see-through face; hour markers etched or printed).
-- **Axial gap** from **POV bar tip plane to dial underside ≥ 5 mm**, including **hub runout** allowance.
-- Only the **hour hand** (and its stub/drive plane) sits in front of the dial. The spinning minute bar stays **behind** the dial.
+Axial order, rear → front (`docs/stack-up.md`, `cad/build_assembly.py`):
 
-### Minute = spinning POV bar
-- Counterbalanced LED PCB (~150 mm, 36× APA102-2020) on a **solid minute shaft**.
-- Drive: **Furitek KOMODO 2204 1400 KV, 12S14P (7 pole pairs)** on ~12 V bus → ~600–1200 RPM with SimpleFOC + AS5600 park.
-- Hub clamp + balance trim pads (TP1–TP4). Clearance guard around the swept disk.
+1. **28BYJ-48** (5 V) at the rear, output shaft **on the clock axis**, body offset.
+2. **Coupler** 5 mm → 3 mm, carries the **hour-home magnet** (hall on `J9`).
+3. **Ring magnet** on the minute tube + **MA730** side-shaft encoder satellite (`J10`, SPI).
+4. **Hollow-shaft gimbal BLDC** (2804 class, ~100 KV, 7 pole pairs) on the 24 V bus.
+5. Base plate, two bearings on the **hollow minute tube** (Ø6/Ø4).
+6. **SenRing G012** through-bore brush slip ring on the minute tube (5 V + GND).
+7. Hub + `hand-minute` POV bar (160 mm overall, 36× APA102-2020, both sides of hub).
+8. **≥ 5 mm** gap (incl. runout) to the **clear acrylic dial** (Ø5 mm centre hole).
+9. **Hour hand** on the Ø3 mm **hour shaft**, which runs inside the minute tube on two MR63 bearings.
 
-### Hour = slow physical hand (Round 3 stub axle)
-- **28BYJ-48** off-axis, **1:1** thin belt or spur gear.
-- Hour hand on a **short stub axle** in a **small bearing at the acrylic dial center**.
-- Entire hour drive is **in front of the bar sweep** (on / just behind the dial plane that already clears the bar). **No hollow tube** around the minute shaft.
-- **Hour home:** AH1806 (+ magnet on stub) or optical flag → `HR_HOME` on base (U6 / J9).
+Only the hour hand is in front of the dial. v0.5 put the stepper, pulleys and
+belt on the dial face, which covered the POV image.
 
-### Encoder / slip stack-up
-Axial order (rear → front), see `docs/stack-up.md`:
-
-1. **AS5600** + diametric magnet on motor shaft **rear**
-2. **Furitek 2204** BLDC
-3. Bearings / plate
-4. **SenRing G012** brush slip (primary) on **front** shaft — Mercotac 205 alt only
-5. Hub clamp + `hand-minute` PCB
-6. Clear acrylic dial (≥5 mm above bar tip incl. runout)
-7. Hour stub bearing + hand + 1:1 drive (front of dial / bar sweep)
-
-**Static clock mode** — BLDC parks the bar at the minute angle with LEDs lit as a glowing minute hand; stepper tracks hour. **Graphics mode** — bar spins; hour hand holds or creeps slowly.
+**Static clock mode:** the BLDC parks the bar at the minute angle (lit as a
+minute hand); the stepper tracks the hour. **Graphics mode:** the bar spins
+600–1200 RPM, the hour hand holds.
 
 ## Electrical
 
 | Board | Role | Key parts |
 |-------|------|-----------|
-| `base-controller` | Stationary MCU + power + motors | ESP32-S3-WROOM-1-N16R8, XL4015→5 V, AMS1117→3V3, **1× DRV8313**, **ULN2003A**, **AH1806 hour home (U6) + J9**, USB-C + barrel |
-| `hand-minute` | Rotor POV bar | ESP32-C3-MINI-1-N4, ME6211 3V3, 74AHCT125, 36× APA102, **AH1806** rotor index, **≥470 µF** + **SMAJ5.0A** |
+| `base-controller` | Stationary MCU, power, motors | ESP32-S3-WROOM-1-N16R8, XL4015 24→5 V, AMS1117 3V3, DRV8313 (minute BLDC), ULN2003A (hour), USB-C sink + USBLC6 ESD, `J10` encoder SPI, `J9` hour home |
+| `hand-minute` | Rotor POV bar | ESP32-C3-MINI-1-N4, ME6211, 74AHCT125, 36× APA102-2020, **DRV5023** index hall, 2× 330 µF polymer + SMAJ5.0A, `J2` UART programming header, USB pogo pads |
 
-### Buses and timing
+### Power
 
-1. **I²C** — S3 **I2C0 → AS5600**. **I2C1** header only.
-2. **POV sync** — rotor **AH1806** once-per-rev; C3 interpolates. **ESP-NOW** = frame payloads only.
-3. **Power transfer** — **SenRing G012** primary (5 A, 5000 RPM) for **5 V + GND**; Mercotac 205 alt; rotor **≥470 µF** + TVS; firmware **~1.2 A LED cap**.
-4. **SPI LEDs** — **8–12 MHz** through 74AHCT125.
-5. **Hour** — ULN2003A half-step + coil de-energize; **1:1** stub drive; **HR_HOME** hall.
+- **24 V** barrel input (`VIN_24V`) → DRV8313 VM directly; XL4015 → **+5 V**; AMS1117 → +3V3.
+- 24 V is needed because a ~100 KV gimbal motor only reaches ~1200 RPM no-load on 12 V.
+- **USB-C** is a proper sink: VBUS → SS34 → +5 V (logic-only bench power and flashing), 5.1 k Rd on CC1/CC2, USBLC6-2SC6 on D±. Motors need the barrel supply.
+- Slip ring carries **+5 V / GND** to the rotor; the rotor has ≥ 660 µF bulk + TVS; firmware caps LED current at ~1.2 A.
+
+### ESP32-S3 pin map (base)
+
+| Function | GPIO | Pad | Note |
+|---|---|---|---|
+| M1_IN1/2/3 (PWM) | 3 / 4 / 5 | 15 / 4 / 5 | GPIO3 is a JTAG-source strap only if eFuse set |
+| M1_EN_ALL (EN1–3) | 6 | 6 | 10 k pull-down: bridge off at reset |
+| M1_nSLEEP (+nRESET) | 38 | 31 | 10 k pull-down: driver asleep at reset |
+| M1_nFAULT | 18 | 11 | 10 k pull-up. **Moved off GPIO46** (strap) |
+| HR_IN1–4 | 7 / 15 / 16 / 17 | 7–10 | ULN2003A |
+| HR_HOME | 11 | 19 | 10 k pull-up + 100 nF |
+| ENC SCK/MISO/MOSI/CS | 12 / 13 / 14 / 39 | 20 / 21 / 22 / 32 | MA730 on `J10` |
+| I2C0 SDA/SCL | 8 / 9 | 12 / 17 | `J5` (AS5600 bench fallback) |
+| I2C1 SDA/SCL | 1 / 2 | 39 / 38 | `J6` spare |
+| USB D− / D+ | 19 / 20 | 13 / 14 | native USB-Serial-JTAG |
+| STATUS_LED / MODE | 10 / 21 | 18 / 23 | |
+
+GPIO35–37 are left free for the N16R8's octal PSRAM. GPIO45/46 are not connected, so their internal pull-downs set the boot mode.
+
+### ESP32-C3 pin map (rotor)
+
+| Function | GPIO | Note |
+|---|---|---|
+| LED data (→ AHCT125 → APA102 SDI) | 8 | strap: 10 k pull-up |
+| LED clock (→ AHCT125 → APA102 CKI) | 4 | |
+| HALL_IN (DRV5023) | 5 | 10 k pull-up |
+| BOOT | 9 | button + `J2` pin 4 |
+| UART0 TX / RX | 21 / 20 | `J2` pins 5 / 6 |
+| USB D− / D+ | 18 / 19 | pogo pads TP5 / TP6 |
+| GPIO2 | 2 | strap: 10 k pull-up |
+
+## Buses and timing
+
+1. **Minute angle**: MA730 (SPI) on the base S3. It provides absolute angle for parking and velocity for interlocks.
+2. **POV phase**: DRV5023 on the rotor triggers once per revolution from a fixed magnet; the C3 interpolates. **ESP-NOW** carries frame payloads and heartbeats only.
+3. **SPI LEDs**: 8–12 MHz through the 74AHCT125 (3.3 V → 5 V).
+4. **Hour**: ULN2003A half-step, coils released between moves; 1:1 direct coupling; `HR_HOME` index.
 
 ## Data flow
 
 ```
 [Phone/host or S3 UI] --ESP-NOW frames--> [C3 on bar] --SPI--> APA102 chain
-                         ^
-                         +-- hall IRQ index --> local POV phase
+                                             ^
+                                             +-- DRV5023 index IRQ (POV phase)
 
-[S3] --SimpleFOC/PWM--> DRV8313 --> Furitek 2204 --> solid minute shaft
-      AS5600 magnet @ shaft REAR (I2C0)
-[S3] --GPIO half-step--> ULN2003A --> 28BYJ-48 --1:1 belt/gear--> dial stub + hour hand
-[S3] <--HR_HOME-- AH1806 @ dial stub
-[S3 5V] --SenRing G012 (Mercotac 205 alt)--> bar 5V/GND
+[S3] --SimpleFOC PWM--> DRV8313 --> gimbal BLDC --> hollow minute tube --> bar
+[S3] <--SPI-- MA730 (side-shaft, ring magnet on tube)
+[S3] --half-step--> ULN2003A --> 28BYJ-48 --coupler--> Ø3 hour shaft --> hour hand
+[S3] <--HR_HOME-- hall @ coupler magnet (J9)
+[24 V] -> XL4015 -> 5 V --SenRing G012--> bar 5 V/GND
 ```
 
-## Safety / firmware interlocks
+## Safety
 
-See `docs/firmware-interlocks.md`. Mechanical disk guard mandatory before spin tests. Prefer brush slip to avoid mercury handling; if Mercotac alt is used, follow orientation + hazardous disposal notes in `docs/lcsc_sources.md`.
+See `docs/firmware-interlocks.md`. A polycarbonate guard over the swept disk is mandatory before spin tests. Use the brush slip ring; the Mercotac (mercury) alternative stays documented in `docs/lcsc_sources.md` but is not recommended.

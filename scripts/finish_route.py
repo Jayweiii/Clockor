@@ -460,20 +460,13 @@ def ensure_gnd_zone(board):
 
 
 def hide_silk(board):
+    """Hide Value text only. v0.6: silkscreen graphics are kept — v0.5 deleted them,
+    which removed LED / TVS / polarized-cap polarity and pin-1 marks to pass DRC."""
     for fp in board.GetFootprints():
-        for t in (fp.Reference(), fp.Value()):
-            try:
-                t.SetVisible(False)
-            except Exception:
-                pass
-        # remove silkscreen graphics to kill silk_overlap / silk_over_copper / text_height
-        for g in list(fp.GraphicalItems()):
-            try:
-                ly = g.GetLayer()
-                if ly in (pcbnew.F_SilkS, pcbnew.B_SilkS):
-                    fp.Remove(g)
-            except Exception:
-                pass
+        try:
+            fp.Value().SetVisible(False)
+        except Exception:
+            pass
 
 
 def remove_dangling_vias(board):
@@ -698,10 +691,10 @@ def apply_design_rules(board):
         ds.m_TrackMinWidth = mm(0.15)
         ds.m_ViasMinSize = mm(0.55)
         ds.m_ViasMinDrill = mm(0.25)
-        ds.m_CopperEdgeClearance = mm(0.25)
+        ds.m_CopperEdgeClearance = mm(0.3)
         ds.m_MinClearance = mm(0.15)
-        ds.m_HoleClearance = mm(0.15)
-        ds.m_HoleToHoleMin = mm(0.2)
+        ds.m_HoleClearance = mm(0.25)
+        ds.m_HoleToHoleMin = mm(0.25)
         ds.m_SolderMaskMinWidth = mm(0.0)
         ds.m_SilkTextMinHeight = mm(0.5)
     except Exception as e:

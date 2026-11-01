@@ -138,8 +138,8 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
         ds.m_ViasMinDrill = mm(0.3)
         ds.m_CopperEdgeClearance = mm(0.3)
         ds.m_MinClearance = mm(0.15)
-        ds.m_HoleClearance = mm(0.0)    # NPTH mount holes sit in copper on many FPs
-        ds.m_HoleToHoleMin = mm(0.2)
+        ds.m_HoleClearance = mm(0.25)   # v0.6: was 0.0 (hid NPTH-in-copper errors)
+        ds.m_HoleToHoleMin = mm(0.25)
         ds.m_SolderMaskMinWidth = mm(0.0)
         try:
             ds.m_SilkTextMinHeight = mm(0.5)
@@ -202,17 +202,8 @@ def place_board(board_name: str, width_mm: float, height_mm: float, placements: 
     if missing_place:
         print(f"  parked without explicit place: {missing_place[:20]}{'...' if len(missing_place)>20 else ''}")
 
-    # ESP modules ship huge courtyard+keepout; strip F.CrtYd graphics so neighbors can sit
-    # beside the module body (antenna keepout zone still blocks copper).
-    for fp in board.GetFootprints():
-        if fp.GetReference() != "U1":
-            continue
-        for g in list(fp.GraphicalItems()):
-            try:
-                if g.GetLayer() in (pcbnew.F_CrtYd, pcbnew.B_CrtYd):
-                    fp.Remove(g)
-            except Exception:
-                pass
+    # v0.6: courtyards are kept. v0.5 deleted U1's courtyard so parts could crowd the
+    # module; overlaps must be solved by placement, not by removing the check.
 
     # Copper zones for GND / +5V / +3V3 (filled later)
     def add_zone(netname, layer):

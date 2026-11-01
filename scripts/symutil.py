@@ -1,11 +1,13 @@
 """Extract and resolve KiCad symbols (including extends) for embedding in schematics."""
 from __future__ import annotations
 import re
+import os
 from pathlib import Path
 from typing import Optional
 
-KICAD_SYM = Path("/workspace/tools/kicad/squashfs-root/usr/share/kicad/symbols")
-EXTRA_SYM = Path("/workspace/clockor/hardware/libs")
+# Stock KiCad 9 symbol dir: override with KICAD9_SYMBOL_DIR (e.g. /usr/share/kicad/symbols)
+KICAD_SYM = Path(os.environ.get("KICAD9_SYMBOL_DIR", "/usr/share/kicad/symbols"))
+EXTRA_SYM = Path(__file__).resolve().parents[1] / "hardware" / "libs"
 
 # Explicit overrides when the same short name could be ambiguous
 LIB_OVERRIDE = {

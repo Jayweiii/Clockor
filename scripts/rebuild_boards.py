@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Rebuild POV clock KiCad projects with official (or pin-accurate) symbols/footprints."""
+"""Rebuild the Clockor KiCad schematics (and, without --sch-only, bare PCB shells).
+
+Set KICAD9_SYMBOL_DIR / KICAD9_FOOTPRINT_DIR to the stock KiCad 9 library dirs
+(defaults: /usr/share/kicad/{symbols,footprints}). Every run ends with
+`sch_netcheck.check`, which fails on pin/label collisions, floating pins and
+undriven power nets.
+"""
 from __future__ import annotations
-import json, shutil, uuid, re
+import json, os, shutil, sys, uuid, re
 from pathlib import Path
 from datetime import datetime
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from symutil import resolve_symbol, pin_numbers, unit_count, lib_id as sym_lib_id
 
-ROOT = Path("/workspace/clockor")
+ROOT = Path(__file__).resolve().parents[1]
 HW = ROOT / "hardware"
-KICAD_FP = Path("/workspace/tools/kicad/squashfs-root/usr/share/kicad/footprints")
+KICAD_FP = Path(os.environ.get("KICAD9_FOOTPRINT_DIR", "/usr/share/kicad/footprints"))
 DATE = datetime.now().strftime("%Y-%m-%d")
 SCH_VER = 20250114
 PCB_VER = 20241229
@@ -44,7 +51,7 @@ def sch_header(title: str, paper="A3") -> str:
 \t\t(date "{DATE}")
 \t\t(rev "0.2")
 \t\t(company "Jason / clockor")
-\t\t(comment 1 "Hybrid v0.3: minute BLDC bar + hour stepper")
+\t\t(comment 1 "Hybrid v0.6: spinning minute POV bar + coaxial stepper hour")
 \t)
 '''
 
@@ -314,8 +321,8 @@ def drive_net(parts: list, pwr_counter: list, net: str, x: float, y: float, with
     pwr_counter[0] += 1
     ref = f"#PWR{i:02d}"
     # Power symbol pin is at its origin
-    parts.append(power_inst(net if net != "VIN_12V" else "PWR_FLAG", ref, x, y))
-    if net == "VIN_12V":
+    parts.append(power_inst(net if net not in ("VIN_24V", "VBUS") else "PWR_FLAG", ref, x, y))
+    if net in ("VIN_24V", "VBUS"):
         # PWR_FLAG only — label provides the name; flag drives the net for ERC
         parts.append(label(net, x, y + 2.54))
         parts.append(wire(x, y, x, y + 2.54))
@@ -352,7 +359,13 @@ def connect_label_to_pin(pname: str, pin_xyz: tuple[float, float, int], stub: fl
     return "".join(out)
 
 
+KEEP_EXISTING_PRO = False  # --sch-only: never clobber board rules / net classes
+
+
 def write_pro(path: Path, name: str):
+    if KEEP_EXISTING_PRO and path.exists():
+        print('kept', path)
+        return
     data = {
         "board": {
             "design_settings": {
@@ -434,7 +447,7 @@ def build_base_sch(outdir: Path):
         "DRV8313": "Package_SO:HTSSOP-28-1EP_4.4x9.7mm_P0.65mm_EP3.4x9.5mm_ThermalVias",
         "ULN2003A": "Package_SO:SOIC-16_3.9x9.9mm_P1.27mm",
         "USB": "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
-        "Barrel": "Connector_BarrelJack:BarrelJack_Horizontal",
+        "Barrel": "Connector_BarrelJack:BarrelJack_CUI_PJ-036AH-SMT_Horizontal",  # pinned (v0.5 used first glob hit)
         "R": "Resistor_SMD:R_0603_1608Metric",
         "C": "Capacitor_SMD:C_0603_1608Metric",
         "C0805": "Capacitor_SMD:C_0805_2012Metric",
@@ -447,25 +460,16 @@ def build_base_sch(outdir: Path):
         "HDR5": "Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical",
         "HDR6": "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
         "HDR3": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
-        "AH1806-W": "Package_TO_SOT_SMD:SC-59",
+        "C1206": "Capacitor_SMD:C_1206_3216Metric",
+        "SOT23-6": "Package_TO_SOT_SMD:SOT-23-6",
     }
-    if (KICAD_FP / "Connector_BarrelJack.pretty").exists():
-        barrels = list((KICAD_FP / "Connector_BarrelJack.pretty").glob("*.kicad_mod"))
-        if barrels:
-            FP["Barrel"] = f"Connector_BarrelJack:{barrels[0].stem}"
-
     syms = [
         "ESP32-S3-WROOM-1", "XL4015", "AMS1117-3.3", "DRV8313", "ULN2003A",
         "USB_C_Receptacle_USB2.0_16P", "Barrel_Jack", "Conn_01x04", "Conn_01x05", "Conn_01x03",
-        "AH1806-W",
+        "Conn_01x06", "USBLC6-2SC6", "D_Schottky",
         "R", "C", "C_Polarized", "D", "L", "LED", "SW_Push",
         "GND", "+3V3", "+5V", "PWR_FLAG",
     ]
-    try:
-        resolve_symbol("+12V")
-        syms.append("+12V")
-    except KeyError:
-        pass
 
     parts = []
     pwr_i = 1
@@ -506,15 +510,21 @@ def build_base_sch(outdir: Path):
         if pn in esp_pos:
             parts.append(connect_label_to_pin(net, esp_pos[pn]))
 
-    # BLDC PWM: GPIO3/4/5 + EN GPIO6  (pins 15,4,5,6)
-    # Stepper: GPIO7/15/16/17 → use pins 7,8,9,10 for HR_IN1..4
-    # Status / mode
+    # WROOM-1 pad → GPIO (v0.6). Strapping pins GPIO0/3/45/46 carry nothing that
+    # pulls them the wrong way at reset; GPIO35-37 are reserved for octal PSRAM (N16R8).
+    #   pad 15 GPIO3  M1_IN1   | pad 4 GPIO4 M1_IN2 | pad 5 GPIO5 M1_IN3
+    #   pad 6  GPIO6  M1_EN_ALL (EN1-3, 10k pull-down → bridges off at boot)
+    #   pad 31 GPIO38 M1_nSLEEP (nSLEEP+nRESET, 10k pull-down → driver asleep at boot)
+    #   pad 11 GPIO18 M1_nFAULT (was GPIO46: pull-up on a strap pin blocked download mode)
+    #   pads 7-10 GPIO7/15/16/17 HR_IN1-4 | pad 19 GPIO11 HR_HOME
+    #   pads 20/21/22/32 GPIO12/13/14/39 encoder SPI (SCK/MISO/MOSI/CS)
     gpio_map = [
         ("15", "M1_IN1"), ("4", "M1_IN2"), ("5", "M1_IN3"), ("6", "M1_EN_ALL"),
+        ("31", "M1_nSLEEP"), ("11", "M1_nFAULT"),
         ("7", "HR_IN1"), ("8", "HR_IN2"), ("9", "HR_IN3"), ("10", "HR_IN4"),
         ("23", "MODE_BTN"), ("18", "STATUS_LED"),
-        ("16", "M1_nFAULT"),  # GPIO13 sense
-        ("19", "HR_HOME"),    # GPIO14 — hour home hall (AH1806 at dial)
+        ("19", "HR_HOME"),
+        ("20", "ENC_SCK"), ("21", "ENC_MISO"), ("22", "ENC_MOSI"), ("32", "ENC_CS"),
     ]
     used_esp = {"1", "2", "3", "13", "14", "27", "12", "17", "40", "41", "39", "38"}
     for pn, net in gpio_map:
@@ -530,7 +540,9 @@ def build_base_sch(outdir: Path):
     xl = resolve_symbol("XL4015")
     parts.append(instance("XL4015", "U2", "XL4015E1", u2[0], u2[1], pin_numbers(xl), FP["XL4015"]))
     xl_pos = pin_positions(xl, "XL4015", u2)
-    for pn, net in [("5", "VIN_12V"), ("1", "GND"), ("3", "BUCK_SW"), ("2", "BUCK_FB"), ("4", "+5V")]:
+    # VC = internal regulator bypass: 1 µF from VC to VIN (C27) per XL4015 typical
+    # application. v0.5 tied VC straight to the 5 V output.
+    for pn, net in [("5", "VIN_24V"), ("1", "GND"), ("3", "BUCK_SW"), ("2", "BUCK_FB"), ("4", "BUCK_VC")]:
         if pn in xl_pos:
             parts.append(connect_label_to_pin(net, xl_pos[pn]))
 
@@ -554,7 +566,7 @@ def build_base_sch(outdir: Path):
             "17": f"{prefix}_nSLEEP", "16": f"{prefix}_nRESET",
             "5": f"{prefix}_OUTA", "8": f"{prefix}_OUTB", "9": f"{prefix}_OUTC",
             "18": f"{prefix}_nFAULT",
-            "4": "VIN_12V", "11": "VIN_12V",
+            "4": "VIN_24V", "11": "VIN_24V",
             "14": "GND", "20": "GND", "28": "GND",
             "6": "GND", "7": "GND", "10": "GND",
             "15": f"{prefix}_V3P3",
@@ -580,7 +592,7 @@ def build_base_sch(outdir: Path):
         "1": "HR_IN1", "2": "HR_IN2", "3": "HR_IN3", "4": "HR_IN4",
         "5": "GND", "6": "GND", "7": "GND",  # unused inputs tied low
         "8": "GND",
-        "9": "VIN_12V",  # COM flyback to motor supply
+        "9": "+5V",  # COM flyback clamp = stepper supply (5 V 28BYJ-48; v0.5 put 12 V here)
         "16": "HR_OUT1", "15": "HR_OUT2", "14": "HR_OUT3", "13": "HR_OUT4",
     }
     used = set(uln_map)
@@ -591,14 +603,17 @@ def build_base_sch(outdir: Path):
         if pn not in used:
             parts.append(noconnect(xyz[0], xyz[1]))
 
-    # USB-C
-    j2 = (20.32, 30.48)
+    # USB-C (UFP / sink). v0.5 bugs fixed: VBUS pins were on GND, CC1 collided with
+    # the +5V PWR_FLAG wire, no Rd. Now: VBUS net, 5.1k Rd on each CC, ESD on D±,
+    # VBUS → Schottky → +5V so logic can be flashed from USB alone (motors need VIN).
+    j2 = (20.32, 63.5)
     usb = resolve_symbol("USB_C_Receptacle_USB2.0_16P")
     parts.append(instance("USB_C_Receptacle_USB2.0_16P", "J2", "TYPE-C-31-M-12", j2[0], j2[1], pin_numbers(usb), FP["USB"]))
     usb_pos = pin_positions(usb, "USB_C_Receptacle_USB2.0_16P", j2)
     usb_map = {
         "A6": "USB_D+", "B6": "USB_D+", "A7": "USB_D-", "B7": "USB_D-",
-        "A4": "GND", "A9": "GND", "B4": "GND", "B9": "GND",
+        "A4": "VBUS", "A9": "VBUS", "B4": "VBUS", "B9": "VBUS",
+        "A5": "USB_CC1", "B5": "USB_CC2",
         "A1": "GND", "A12": "GND", "B1": "GND", "B12": "GND", "S1": "GND",
     }
     used = set(usb_map)
@@ -615,7 +630,7 @@ def build_base_sch(outdir: Path):
     parts.append(instance("Barrel_Jack", "J1", "DC005-2.5", j1[0], j1[1], pin_numbers(bj), FP["Barrel"]))
     bj_pos = pin_positions(bj, "Barrel_Jack", j1)
     if "1" in bj_pos:
-        parts.append(connect_label_to_pin("VIN_12V", bj_pos["1"]))
+        parts.append(connect_label_to_pin("VIN_24V", bj_pos["1"]))
     if "2" in bj_pos:
         parts.append(connect_label_to_pin("GND", bj_pos["2"]))
 
@@ -629,25 +644,36 @@ def build_base_sch(outdir: Path):
 
     # BLDC phase out
     hdr("J3", (270.0, 40.64), ["M1_OUTA", "M1_OUTB", "M1_OUTC", "GND"])
-    # AS5600 on I2C0 (satellite)
+    # I2C0 header (AS5600 bench fallback / accessories). The v0.6 coaxial shaft has
+    # no free rear shaft end, so the primary minute encoder is SPI (J10).
     hdr("J5", (140.0, 30.48), ["+3V3", "GND", "I2C0_SDA", "I2C0_SCL"])
     # I2C1 breakout (unused / future)
     hdr("J6", (140.0, 50.8), ["+3V3", "GND", "I2C1_SDA", "I2C1_SCL"])
+    # Minute encoder satellite: MagAlpha MA730 side-shaft + ring magnet on hollow minute shaft
+    hdr("J10", (140.0, 71.12), ["+3V3", "GND", "ENC_SCK", "ENC_MISO", "ENC_MOSI", "ENC_CS"], "Conn_01x06", "HDR6")
     # Single slip ring → spinning minute bar (5V + GND only)
     hdr("J7", (100.0, 140.0), ["SLIP_5V", "SLIP_GND", "GND", "+5V"])
-    # Hour stepper 5-pin: common + 4 coils
-    hdr("J8", (160.0, 140.0), ["VIN_12V", "HR_OUT1", "HR_OUT2", "HR_OUT3", "HR_OUT4"], "Conn_01x05", "HDR5")
+    # Hour stepper 5-pin: common (+5 V, 5 V 28BYJ-48) + 4 coils
+    hdr("J8", (160.0, 140.0), ["+5V", "HR_OUT1", "HR_OUT2", "HR_OUT3", "HR_OUT4"], "Conn_01x05", "HDR5")
 
-    # Hour home: AH1806 at dial plate (magnet on hour stub) — U6 on PCB or fly to dial; J9 breakout
-    u6 = (180.0, 160.0)
-    hall = resolve_symbol("AH1806-W")
-    parts.append(instance("AH1806-W", "U6", "AH1806-W-7", u6[0], u6[1], pin_numbers(hall), FP["AH1806-W"]))
-    hp = pin_positions(hall, "AH1806-W", u6)
-    for pn, net in [("1", "+3V3"), ("2", "HR_HOME"), ("3", "GND")]:
-        if pn in hp:
-            parts.append(connect_label_to_pin(net, hp[pn]))
+    # Hour home: remote hall on the rear hour-shaft coupler (magnet on coupler) via J9.
+    # v0.5 also had U6 on this PCB — it could never see the magnet and sat in
+    # parallel with J9, so it is removed. R22 pull-up for an open-drain sensor.
     two_pin("R", "R22", "10k", (200.0, 160.0), FP["R"], "HR_HOME", "+3V3")
     hdr("J9", (220.0, 160.0), ["+3V3", "GND", "HR_HOME"], "Conn_01x03", "HDR3")
+    two_pin("C", "C26", "100nF", (235.0, 160.0), FP["C"], "HR_HOME", "GND")  # cable noise filter
+
+    # USB-C support: Rd on CC, ESD array, VBUS OR-ing diode
+    two_pin("R", "R23", "5.1k", (20.0, 95.0), FP["R"], "USB_CC1", "GND")
+    two_pin("R", "R24", "5.1k", (30.0, 95.0), FP["R"], "USB_CC2", "GND")
+    two_pin("D_Schottky", "D3", "SS34", (100.0, 180.0), FP["D"], "+5V", "VBUS")  # pin1 = K
+    esd = resolve_symbol("USBLC6-2SC6")
+    u7 = (100.0, 200.0)
+    parts.append(instance("USBLC6-2SC6", "U7", "USBLC6-2SC6", u7[0], u7[1], pin_numbers(esd), FP["SOT23-6"]))
+    ep = pin_positions(esd, "USBLC6-2SC6", u7)
+    for pn, net in [("1", "USB_D+"), ("6", "USB_D+"), ("3", "USB_D-"), ("4", "USB_D-"), ("5", "VBUS"), ("2", "GND")]:
+        if pn in ep:
+            parts.append(connect_label_to_pin(net, ep[pn]))
 
     # Slip aliases
     parts.append(wire(90, 150, 110, 150))
@@ -660,7 +686,8 @@ def build_base_sch(outdir: Path):
     # Passives
     two_pin("L", "L1", "47uH", (45.0, 130.0), FP["L"], "BUCK_SW", "+5V")
     two_pin("D", "D1", "SS54", (55.0, 130.0), FP["D"], "BUCK_SW", "GND")
-    two_pin("C_Polarized", "C1", "470uF", (25.0, 130.0), FP["CP"], "VIN_12V", "GND")
+    two_pin("C_Polarized", "C1", "470uF 35V", (25.0, 130.0), FP["CP"], "VIN_24V", "GND")
+    two_pin("C", "C27", "1uF 50V", (35.0, 150.0), FP["C0805"], "BUCK_VC", "VIN_24V")
     two_pin("C_Polarized", "C2", "470uF", (65.0, 130.0), FP["CP"], "+5V", "GND")
     two_pin("C", "C3", "22uF", (85.0, 130.0), FP["C0805"], "+3V3", "GND")
     two_pin("C", "C4", "10uF", (95.0, 130.0), FP["C0805"], "+5V", "GND")
@@ -678,36 +705,46 @@ def build_base_sch(outdir: Path):
     two_pin("R", "R6", "4.7k", (150.0, 90.0), FP["R"], "I2C1_SDA", "+3V3")
     two_pin("R", "R7", "4.7k", (160.0, 90.0), FP["R"], "I2C1_SCL", "+3V3")
 
+    # Buttons spaced ≥ 20 mm: v0.5 put SW1 pin 2 and SW2 pin 1 0.16 mm apart.
     two_pin("SW_Push", "SW1", "BOOT", (70.0, 90.0), FP["SW"], "BOOT", "GND")
-    two_pin("SW_Push", "SW2", "MODE", (80.0, 90.0), FP["SW"], "MODE_BTN", "GND")
+    two_pin("SW_Push", "SW2", "MODE", (90.0, 90.0), FP["SW"], "MODE_BTN", "GND")
 
-    # Tie MCU motor enables
+    # DRV8313 control: EN1-3 together (GPIO6), nSLEEP+nRESET together (GPIO38).
+    # Both pulled low so the bridge is off/asleep while the S3 boots or resets.
     x0, stub_y = 200, 170
-    nets = ["M1_EN_ALL", "M1_EN1", "M1_EN2", "M1_EN3", "M1_nSLEEP", "M1_nRESET"]
-    for i, n in enumerate(nets):
-        parts.append(label(n, x0 + i * 15, stub_y))
-        if i:
-            parts.append(wire(x0 + (i - 1) * 15, stub_y, x0 + i * 15, stub_y))
+    for nets in (["M1_EN_ALL", "M1_EN1", "M1_EN2", "M1_EN3"], ["M1_nSLEEP", "M1_nRESET"]):
+        for i, n in enumerate(nets):
+            parts.append(label(n, x0 + i * 15, stub_y))
+            if i:
+                parts.append(wire(x0 + (i - 1) * 15, stub_y, x0 + i * 15, stub_y))
+        stub_y += 10
+    two_pin("R", "R25", "10k", (270.0, 200.0), FP["R"], "M1_EN_ALL", "GND")
+    two_pin("R", "R26", "10k", (285.0, 200.0), FP["R"], "M1_nSLEEP", "GND")
 
     # Charge-pump caps (KiBot-safe refs)
     two_pin("C", "C20", "10nF", (250, 170), FP["C"], "M1_CPH", "M1_CPL")
-    two_pin("C", "C21", "100nF", (250, 180), FP["C"], "M1_VCP", "VIN_12V")
+    two_pin("C", "C21", "100nF", (250, 180), FP["C"], "M1_VCP", "VIN_24V")
     two_pin("C", "C22", "470nF", (250, 190), FP["C"], "M1_V3P3", "GND")
+    # VM local decoupling at DRV8313 pins 4 and 11 (v0.5 relied on C1 only)
+    two_pin("C", "C23", "100nF 50V", (250, 210), FP["C"], "VIN_24V", "GND")
+    two_pin("C", "C24", "100nF 50V", (260, 210), FP["C"], "VIN_24V", "GND")
+    two_pin("C", "C25", "10uF 50V", (270, 220), FP["C1206"], "VIN_24V", "GND")
 
     # Power
     pwr_counter = [pwr_i]
     drive_net(parts, pwr_counter, "+3V3", 15.24, 20.32, with_flag=False)
     drive_net(parts, pwr_counter, "+5V", 30.48, 20.32, with_flag=True)  # KiBot wants flag
     drive_net(parts, pwr_counter, "GND", 45.72, 20.32, with_flag=True)
-    drive_net(parts, pwr_counter, "VIN_12V", 15.24, 114.3)
+    drive_net(parts, pwr_counter, "VIN_24V", 15.24, 114.3)
+    drive_net(parts, pwr_counter, "VBUS", 60.0, 20.32)
 
-    parts.append(text(10, 10, "POV Clock — Base Controller HYBRID v0.5", 2.0))
-    parts.append(text(10, 15, "ESP32-S3 + DRV8313 + ULN2003A + hour-home AH1806 (U6/J9); 1:1 dial stub hour drive", 1.2))
-    parts.append(text(10, 18, "No TCA9548A — AS5600 on I2C0; I2C1 breakout. Single slip ring to minute bar.", 1.0))
+    parts.append(text(10, 10, "POV Clock — Base Controller HYBRID v0.6", 2.0))
+    parts.append(text(10, 15, "ESP32-S3 + DRV8313 (24 V gimbal BLDC) + ULN2003A (5 V 28BYJ-48, coaxial hour shaft)", 1.2))
+    parts.append(text(10, 18, "USB-C sink + ESD; encoder SPI J10 (MA730 side-shaft); hour home remote via J9.", 1.0))
 
     body = sch_header("POV Clock — Base Controller (Hybrid)")
     # bump rev in header via replace
-    body = body.replace('(rev "0.2")', '(rev "0.5")')
+    body = body.replace('(rev "0.2")', '(rev "0.6")')
     body += lib_symbols_section(syms) + "\n"
     body += "".join(parts)
     body += sch_footer()
@@ -728,8 +765,10 @@ def build_hand_sch(outdir: Path, which: str, length_mm: int, led_count: int):
         "ME6211C33M5": "Package_TO_SOT_SMD:SOT-23-5",
         "74AHCT125": "Package_SO:TSSOP-14_4.4x5mm_P0.65mm",
         "APA102-2020": "LED_SMD:LED-APA102-2020",
-        "AH1806-W": "Package_TO_SOT_SMD:SC-59",
+        "DRV5023": "Package_TO_SOT_SMD:SOT-23",
         "SMAJ5.0A": "Diode_SMD:D_SMA",
+        "CPOLY": "Capacitor_Tantalum_SMD:CP_EIA-7343-31_Kemet-D",
+        "HDR6": "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
         "R": "Resistor_SMD:R_0603_1608Metric",
         "C": "Capacitor_SMD:C_0603_1608Metric",
         "C0805": "Capacitor_SMD:C_0805_2012Metric",
@@ -740,8 +779,8 @@ def build_hand_sch(outdir: Path, which: str, length_mm: int, led_count: int):
     }
     syms = [
         "ESP32-C3-MINI-1", "ME6211C33M5", "74AHCT125", "APA102-2020",
-        "AH1806-W", "SMAJ5.0A", "TestPoint",
-        "R", "C", "C_Polarized", "Conn_01x04", "SW_Push",
+        "DRV5023", "SMAJ5.0A", "TestPoint",
+        "R", "C", "C_Polarized", "Conn_01x04", "Conn_01x06", "SW_Push",
         "GND", "+3V3", "+5V", "PWR_FLAG",
     ]
     parts = []
@@ -765,9 +804,13 @@ def build_hand_sch(outdir: Path, which: str, length_mm: int, led_count: int):
     for pn, net in [
         ("3", "+3V3"), ("1", "GND"), ("2", "GND"), ("11", "GND"), ("14", "GND"),
         ("8", "EN_C3"), ("23", "BOOT"),
-        ("22", "LED_DI_3V3"),  # GPIO8 DI — SPI-ish ~10 MHz in FW
+        ("22", "LED_DI_3V3"),  # GPIO8 DI — SPI-ish ~10 MHz in FW (strap: 10k pull-up R3)
         ("18", "LED_CI_3V3"),  # GPIO4 CI
         ("19", "HALL_IN"),     # GPIO5 — once-per-rev index
+        ("5", "C3_GPIO2"),     # strap: 10k pull-up R4
+        # Programming access (v0.5 had none): UART0 on J2, native USB on TP5/TP6
+        ("30", "C3_RXD"), ("31", "C3_TXD"),
+        ("26", "C3_USB_DN"), ("27", "C3_USB_DP"),
     ]:
         if pn in pos:
             parts.append(connect_label_to_pin(net, pos[pn]))
@@ -817,17 +860,20 @@ def build_hand_sch(outdir: Path, which: str, length_mm: int, led_count: int):
             parts.append(connect_label_to_pin(net, ah_pos5[pn]))
     parts.append(instance("74AHCT125", "U3", "SN74AHCT125PWR", 180.0, 40.64, ah_pins, FP["74AHCT125"], unit=3))
     parts.append(instance("74AHCT125", "U3", "SN74AHCT125PWR", 180.0, 60.96, ah_pins, FP["74AHCT125"], unit=4))
-    for origin, pins_nc in [((180.0, 40.64), ["8", "9", "10"]), ((180.0, 60.96), ["11", "12", "13"])]:
+    # Unused gates: OE high (output disabled), input low, output open — no floating CMOS inputs
+    for origin, y_pin, a_pin, oe_pin in [((180.0, 40.64), "8", "9", "10"), ((180.0, 60.96), "11", "12", "13")]:
         p = pin_positions(ah, "74AHCT125", origin)
-        for pn in pins_nc:
-            if pn in p:
-                parts.append(noconnect(p[pn][0], p[pn][1]))
+        parts.append(noconnect(p[y_pin][0], p[y_pin][1]))
+        parts.append(connect_label_to_pin("GND", p[a_pin]))
+        parts.append(connect_label_to_pin("+5V", p[oe_pin]))
 
-    # U4 AH1806-W hall — VDD=1, OUT=2 (OD), GND=3; pullup on OUT
+    # U4 DRV5023 hall — VCC=1, OUT=2 (OD), GND=3; pull-up on OUT.
+    # v0.5 used AH1806 (micropower, duty-cycled sampling) — it misses a magnet that
+    # passes in ~1 ms at 1200 RPM. DRV5023 samples continuously (~30 kHz).
     u4 = (100.0, 30.48)
-    hall = resolve_symbol("AH1806-W")
-    parts.append(instance("AH1806-W", "U4", "AH1806-W-7", u4[0], u4[1], pin_numbers(hall), FP["AH1806-W"]))
-    hp = pin_positions(hall, "AH1806-W", u4)
+    hall = resolve_symbol("DRV5023")
+    parts.append(instance("DRV5023", "U4", "DRV5023FAQDBZR", u4[0], u4[1], pin_numbers(hall), FP["DRV5023"]))
+    hp = pin_positions(hall, "DRV5023", u4)
     for pn, net in [("1", "+3V3"), ("2", "HALL_IN"), ("3", "GND")]:
         if pn in hp:
             parts.append(connect_label_to_pin(net, hp[pn]))
@@ -864,13 +910,31 @@ def build_hand_sch(outdir: Path, which: str, length_mm: int, led_count: int):
     two_pin("C", "C2", "22uF", (110, 70), FP["C0805"], "+3V3", "GND")  # bulk for Wi-Fi peaks
     two_pin("C", "C3", "22uF", (120, 70), FP["C0805"], "+5V", "GND")
     two_pin("C", "C4", "10uF", (130, 70), FP["C0805"], "+5V", "GND")
-    # >=470uF bulk on rotor +5V (Chief #4)
-    two_pin("C_Polarized", "C5", "470uF", (145, 70), FP["CP"], "+5V", "GND")
-    # TVS on +5V (SMAJ5.0A: pin1 anode→GND, pin2 cathode→+5V)
-    two_pin("SMAJ5.0A", "D40", "SMAJ5.0A", (160, 70), FP["SMAJ5.0A"], "GND", "+5V")
+    # >=470uF bulk on rotor +5V (Chief #4): 2× 330 µF 10 V polymer tantalum (low
+    # profile, no wet electrolyte under ~120 g at the bar tip) instead of a 10×10 can.
+    two_pin("C_Polarized", "C5", "330uF 10V polymer", (145, 70), FP["CPOLY"], "+5V", "GND")
+    two_pin("C_Polarized", "C7", "330uF 10V polymer", (145, 90), FP["CPOLY"], "+5V", "GND")
+    # TVS on +5V. KiCad SMAJ symbol: pin 1 = cathode (= D_SMA pad 1 / band).
+    # v0.5 had pin 1 on GND → TVS forward-biased across the rail (dead short).
+    two_pin("SMAJ5.0A", "D40", "SMAJ5.0A", (160, 70), FP["SMAJ5.0A"], "+5V", "GND")
 
     two_pin("R", "R1", "10k", (90, 70), FP["R"], "EN_C3", "+3V3")
+    two_pin("C", "C6", "1uF", (90, 90), FP["C"], "EN_C3", "GND")  # EN RC delay per Espressif HW guide
+    two_pin("R", "R3", "10k", (70, 90), FP["R"], "LED_DI_3V3", "+3V3")  # GPIO8 strap high
+    two_pin("R", "R4", "10k", (80, 90), FP["R"], "C3_GPIO2", "+3V3")    # GPIO2 strap high
     two_pin("SW_Push", "SW1", "BOOT", (80, 70), FP["SW"], "BOOT", "GND")
+
+    # Programming header: 3V3 GND EN IO9 TX RX (USB-UART adapter with auto-reset)
+    c6 = resolve_symbol("Conn_01x06")
+    parts.append(instance("Conn_01x06", "J2", "PROG", 20, 90, pin_numbers(c6), FP["HDR6"]))
+    jp6 = pin_positions(c6, "Conn_01x06", (20, 90))
+    for pn, net in [("1", "+3V3"), ("2", "GND"), ("3", "EN_C3"), ("4", "BOOT"), ("5", "C3_TXD"), ("6", "C3_RXD")]:
+        parts.append(connect_label_to_pin(net, jp6[pn]))
+    # Native-USB pogo pads (D-/D+) for flashing / JTAG without the header fitted
+    tpu = resolve_symbol("TestPoint")
+    for ref, xy, net in [("TP5", (100, 250), "C3_USB_DN"), ("TP6", (115, 250), "C3_USB_DP")]:
+        parts.append(instance("TestPoint", ref, net, xy[0], xy[1], pin_numbers(tpu), "TestPoint:TestPoint_Pad_D1.0mm"))
+        parts.append(connect_label_to_pin(net, pin_positions(tpu, "TestPoint", xy)["1"]))
 
     # Slip ring
     c = resolve_symbol("Conn_01x04")
@@ -895,17 +959,18 @@ def build_hand_sch(outdir: Path, which: str, length_mm: int, led_count: int):
     drive_net(parts, pwr_counter, "GND", 45.72, 20.32, with_flag=True)
 
     parts.append(text(10, 10, f"POV Clock Minute Bar — {which} ({length_mm}mm balanced, {led_count}x APA102)", 2.0))
-    parts.append(text(10, 15, "Hall AH1806 index; 470uF+TVS on 5V; ESP-NOW frames only; SPI 8-12 MHz", 1.1))
+    parts.append(text(10, 15, "v0.6: DRV5023 index; 660uF polymer + TVS on 5V; UART/USB programming; ESP-NOW frames only; SPI 8-12 MHz", 1.1))
 
     prev_do, prev_co = "LED_DO_2", "LED_CO_2"
     for i in range(3, led_count):
         do, co = f"LED_DO_{i}", f"LED_CO_{i}"
-        xy = (50 + ((i - 3) % 12) * 15, 160 + ((i - 3) // 12) * 25)
+        # 30 mm × 35 mm pitch: v0.5's 15 × 25 mm grid let neighbouring pin stubs overlap
+        xy = (250 + ((i - 3) % 8) * 30, 40 + ((i - 3) // 8) * 35)
         place_led(f"D{i}", xy, prev_do, prev_co, do, co)
         prev_do, prev_co = do, co
 
     body = sch_header(f"POV Clock Minute Bar ({which}, {length_mm}mm, {led_count}x APA102)", paper="A2")
-    body = body.replace('(rev "0.2")', '(rev "0.5")')
+    body = body.replace('(rev "0.2")', '(rev "0.6")')
     body += lib_symbols_section(syms) + "\n"
     body += "".join(parts)
     body += sch_footer()
@@ -1071,7 +1136,26 @@ def build_hand_pcb(outdir: Path, which: str, length_mm: int, led_count: int):
     write(outdir / f"hand-{which}.kicad_pcb", body)
 
 
+def verify(sch: Path) -> int:
+    """Fail the build on label/pin collisions, floating pins or undriven power nets."""
+    from sch_netcheck import check
+    problems = [p for p in check(sch) if not p.startswith("SINGLE")]
+    for p in problems:
+        print("  ✗", p)
+    print(f"verify {sch.name}: {len(problems)} problem(s)")
+    return len(problems)
+
+
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--sch-only", action="store_true",
+                    help="regenerate schematics/projects only; keep the existing .kicad_pcb layouts "
+                         "(then use pcbnew 'Update PCB from Schematic' to pull changes in)")
+    args = ap.parse_args()
+    global KEEP_EXISTING_PRO
+    KEEP_EXISTING_PRO = args.sch_only
+
     base = HW / "base-controller"
     minute = HW / "hand-minute"
     # Remove obsolete hour rotor board
@@ -1081,9 +1165,9 @@ def main():
         print("removed obsolete hand-hour/")
 
     for d in (base, minute):
-        if d.exists():
+        if d.exists() and not args.sch_only:
             shutil.rmtree(d)
-        d.mkdir(parents=True)
+        d.mkdir(parents=True, exist_ok=True)
 
     sym_libs = [
         ("Clockor", "${KIPRJMOD}/../libs/Clockor.kicad_sym"),
@@ -1098,11 +1182,16 @@ def main():
         write_fp_lib_table(d / "fp-lib-table", fp_libs)
 
     build_base_sch(base)
-    build_base_pcb(base)
     # Balanced diametric bar ~160 mm, 36 LEDs (18 per side)
     build_hand_sch(minute, "minute", 160, 36)
-    build_hand_pcb(minute, "minute", 160, 36)
-    print("DONE rebuild hybrid v0.3")
+    if not args.sch_only:
+        build_base_pcb(base)
+        build_hand_pcb(minute, "minute", 160, 36)
+    bad = verify(base / "base-controller.kicad_sch") + verify(minute / "hand-minute.kicad_sch")
+    if bad:
+        raise SystemExit(f"schematic verification failed ({bad} problems)")
+    print("DONE rebuild hybrid v0.6")
+
 
 if __name__ == "__main__":
     main()

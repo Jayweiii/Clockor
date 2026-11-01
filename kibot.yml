@@ -16,7 +16,10 @@ preflight:
   run_erc: true
   erc_warnings: false   # fail CI only on ERC errors
   update_xml: true
-  run_drc: true   # enabled: 0 non-UC DRC errors; ignore_unconnected absorbs remaining UC
+  # v0.6: schematics changed (USB-C, TVS, strap pins, encoder, programming header);
+  # the committed v0.5 copper no longer matches. Re-enable once boards are re-laid out
+  # from 'Update PCB from Schematic' and DRC is clean WITHOUT ignore_unconnected.
+  run_drc: false
   check_zone_fills: false
   ignore_unconnected: true   # boards may be unrouted initially
   filters:
@@ -45,6 +48,7 @@ outputs:
   - name: gerbers
     comment: Gerbers
     type: gerber
+    run_by_default: false   # stale v0.5 layout — do not fabricate
     dir: kibot_out/gerbers
     options:
       exclude_edge_layer: false
@@ -65,11 +69,13 @@ outputs:
   - name: drill
     comment: Drill files
     type: excellon
+    run_by_default: false   # stale v0.5 layout — do not fabricate
     dir: kibot_out/gerbers
 
   - name: pcb_pdf
     comment: PCB layers PDF
     type: pdf_pcb_print
+    run_by_default: false   # stale v0.5 layout — do not fabricate
     dir: kibot_out/pcb
     options:
       dnp_broken_frames: false

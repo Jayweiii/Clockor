@@ -1,33 +1,33 @@
-# PCB status — Clockor Round 3+ (2026-11-01)
+# PCB status — v0.6 (2026-11-01)
 
-## Goal
-Finish routing both boards without shorts, clear silk/courtyard/hole/dangling-via **errors**, target **0 non-unconnected DRC errors**, then enable DRC in KiBot CI (`ignore_unconnected: true` until UC=0).
+## Summary
 
-## Result (honest)
+The **v0.6 schematics** are regenerated and pass `scripts/sch_netcheck.py --check` (0 problems on both boards).
+The **PCB files are still the v0.5 layouts** and **do not match** the v0.6 netlists. Do not fabricate them.
 
-| Board | ERC errors | ERC warnings | DRC shorts | Non-UC DRC **errors** | Unconnected | DRC warnings |
-|-------|------------|--------------|------------|------------------------|-------------|--------------|
-| `base-controller` | **0** | ~217 (`lib_symbol_issues`, `endpoint_off_grid`, …) | **0** | **0** | **68** | ~9 (`hole_to_hole`, `via_dangling`) |
-| `hand-minute` | **0** | ~406 (same classes) | **0** | **0** | **74** | ~2 (`hole_to_hole`, `via_dangling`) |
+KiBot CI: ERC + schematic PDF + BOM run; DRC, Gerbers, drill and PCB PDF are off (`run_by_default: false`) until re-layout.
 
-**Shorts: 0.** **Non-unconnected DRC errors: 0** on both boards (clearance / hole_clearance / copper_edge / copper_sliver / track_dangling cleaned).
+## Why the v0.5 copper is not reusable as-is
 
-**Full 0-unconnected not reached** with the pattern/MST/via router on these dense hub layouts. Remaining UC nets need manual pcbnew work or a better autorouter. **CI `run_drc: true`** with `ignore_unconnected: true` (and existing `unconnected_items` filter) so the pipeline enforces zero real DRC errors without failing on unfinished nets.
+| Item | v0.5 layout |
+|---|---|
+| USB-C VBUS pads | Routed to **GND** (schematic bug); copper shorts host VBUS |
+| Rotor TVS D40 | Reversed vs. `D_SMA` pad 1 = cathode → shorts +5 V |
+| Unrouted nets | ~68 (base) / ~74 (rotor) |
+| Silkscreen | **Deleted** by `finish_route.py` (no polarity / pin-1 marks) |
+| Courtyards | **Deleted** on U1 and crowded parts to pass DRC |
+| Rules | Hole clearance 0, copper-to-edge 0.05 mm — below fab capability |
+| Hole-to-hole | Stacked GND vias 0.2 mm apart (overlapping drills) |
 
-Local reports: `review/*_drc.rpt`, `review/*_erc.rpt`.  
-Review renders: `renders/*_{F_Cu,B_Cu,front,back,3d}.{png,jpg}` plus `.step` / `.glb`.
+## v0.6 layout procedure
 
-## How routed / cleaned
-- `scripts/place_and_route.py` — placements + rules; GND pour **B.Cu only**.
-- `scripts/finish_route.py` — pad/keepout obstacles, LED spines, MST, via patterns; short-clean.
-- `scripts/second_pass.py` — DRC-pair reconnect (diminishing returns ~65–74 UC).
-- Hygiene: strip F/B.CrtYd + dense silk; NPTH copper purge (J2 barrel); dangling track/via delete; hole_clearance 0; copper_edge 0.05 mm.
+1. `KICAD9_SYMBOL_DIR=/usr/share/kicad/symbols python3 scripts/rebuild_boards.py --sch-only` (schematics only; keeps the `.kicad_pro` rules and the existing `.kicad_pcb`).
+2. In pcbnew: **Tools → Update PCB from Schematic** (F8). New parts: base U7, D3, R23–R26, C23–C27, J10 (U6 removed); rotor J2, TP5/TP6, R3/R4, C6/C7 (C5 changes to a 7343 footprint, U4 changes to SOT-23).
+3. **Delete all v0.5 tracks and vias** and route by hand. Priorities:
+   - Base: DRV8313 VM caps C23/C24 at pins 4/11; the exposed pad needs a thermal via array to the B.Cu GND pour; XL4015 hot loop (C1–U2–D1) tight; USB D± as a 90 Ω pair through U7.
+   - Rotor: symmetric copper mass about the hub; C5/C7 and U1 at the hub (lowest g); LED chain on one layer; DRV5023 at the radius the fixed magnet passes.
+4. Restore silkscreen (`scripts/finish_route.py::hide_silk` now hides only Value text).
+5. Board rules (now in the `.kicad_pro`): clearance 0.15, hole clearance 0.25, hole-to-hole 0.25, copper-to-edge 0.3 mm.
+6. DRC must be **clean including unconnected items**. Then set `run_drc: true`, remove `ignore_unconnected`, and drop `run_by_default: false` from the fab outputs in `kibot.yml`.
 
-## Schematic Round 3 (base) — unchanged
-- U6 `AH1806-W-7` hour-home hall + R22 10k + J9 → `/HR_HOME` (GPIO19).
-- Hour drive **1:1** front-of-sweep stub axle (no hollow tube).
-
-## Remaining PCB work
-1. Manually finish ~68 / ~74 unconnected nets (or upgrade router).
-2. Clear remaining `hole_to_hole` / `via_dangling` **warnings**.
-3. Flip `ignore_unconnected` to false only when UC = 0.
+The experimental routers (`simple_route.py`, `careful_route.py`, `finish_route.py`, `second_pass.py`) are kept for reference. Their output plateaued at ~70 unconnected nets per board; hand routing is the expected path.

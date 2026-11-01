@@ -1,5 +1,36 @@
 # Design review changelog
 
+## 2026-11-01 — v0.6 redesign (post-review)
+
+Full write-up: `docs/design-review-v0.6.md`.
+
+**Schematic fixes (base-controller)**
+| # | v0.5 defect | v0.6 |
+|---|---|---|
+| 1 | USB-C VBUS pins on GND; CC1 collided with the +5V PWR_FLAG wire; no Rd | VBUS net → SS34 → +5V; 5.1 k Rd on CC1/CC2; USBLC6-2SC6 on D± |
+| 2 | nFAULT pull-up on **GPIO46** (strap) blocked download mode | nFAULT → GPIO18; GPIO46 left on its internal pull-down |
+| 3 | Stepper common + ULN COM on **12 V** for a 5 V 28BYJ-48 | Both on +5 V |
+| 4 | EN1–3 + nSLEEP + nRESET on one floating GPIO | EN_ALL (GPIO6) and nSLEEP/nRESET (GPIO38), each with a 10 k pull-down |
+| 5 | No ceramic VM decoupling | C23/C24 100 nF + C25 10 µF (50 V) |
+| 6 | XL4015 VC tied to the 5 V output | 1 µF VC→VIN (typical application; confirm) |
+| 7 | U6 hall on the PCB, in parallel with J9, unable to see the magnet | U6 removed; J9 remote + 100 nF |
+| 8 | 12 V bus | 24 V bus for the gimbal motor; C1 35 V |
+| 9 | — | J10 SPI header for MA730 side-shaft encoder |
+
+**Schematic fixes (hand-minute)**
+| # | v0.5 defect | v0.6 |
+|---|---|---|
+| 1 | TVS D40 pin 1 (cathode) on GND → shorts +5 V | Pin 1 → +5 V |
+| 2 | No way to program the C3 | J2 UART header (3V3/GND/EN/IO9/TX/RX) + USB pogo pads TP5/TP6 |
+| 3 | AH1806 (duty-cycled micropower) as rotor index | DRV5023 always-on hall |
+| 4 | 74AHCT125 gates 3/4 inputs floating | OE → +5 V, A → GND |
+| 5 | GPIO8/GPIO2 straps floating; EN without RC | 10 k pull-ups; 1 µF on EN |
+| 6 | 470 µF 10×10 can on the rotor | 2× 330 µF polymer tantalum (7343) |
+
+**Mechanical**: coaxial Ø3 hour shaft through a hollow minute tube, 28BYJ-48 at the rear (only the hour hand in front of the dial); hollow-shaft gimbal BLDC; MA730 side-shaft encoder. CAD: bar length fixed (300 → 160 mm overall), hour hand 110 → 60 mm.
+
+**Tooling**: `scripts/sch_netcheck.py` (netlister validated against kicad-cli; collision/floating/undriven checks run on every rebuild); `scripts/export_bom.py` (BOMs generated from the schematics); `rebuild_boards.py --sch-only`; portable library paths; silk/courtyard stripping removed; fab-safe board rules. CI: DRC and fab outputs off until re-layout.
+
 ## 2026-11-01 — Round 3+ routing / CI DRC enable
 
 - Both boards: **0 shorts**, **0 non-unconnected DRC errors** (warnings only: hole_to_hole, via_dangling).

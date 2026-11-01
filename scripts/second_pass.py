@@ -118,17 +118,8 @@ def second_pass(name: str):
             break
         remove_shorting(pcb_path)
 
-    # Final courtyard strip for remaining overlaps: shrink by removing courtyard on crowded refs
     board = pcbnew.LoadBoard(str(pcb_path))
-    for fp in board.GetFootprints():
-        ref = fp.GetReference()
-        if ref.startswith("Cd") or ref in ("SW1", "SW2", "J1"):
-            for g in list(fp.GraphicalItems()):
-                try:
-                    if g.GetLayer() in (pcbnew.F_CrtYd, pcbnew.B_CrtYd):
-                        fp.Remove(g)
-                except Exception:
-                    pass
+    # v0.6: no courtyard stripping (v0.5 removed courtyards on crowded refs to pass DRC)
     hide_silk(board)
     filler = pcbnew.ZONE_FILLER(board)
     filler.Fill(board.Zones())
