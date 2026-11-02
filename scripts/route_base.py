@@ -22,7 +22,7 @@ DST = sys.argv[2] if len(sys.argv) > 2 else SRC
 
 G = 0.1            # grid pitch, mm
 CLR = 0.1          # board min clearance
-RQ = 0.07          # raster quantisation margin
+RQ = 0.04          # raster quantisation margin
 EDGE = 0.35        # copper to board edge keepout (+ half width)
 nm = pcbnew.FromMM
 mm = pcbnew.ToMM
@@ -50,10 +50,13 @@ def neck_of(w):
 
 
 board = pcbnew.LoadBoard(SRC)
+_keep = []
 for t in list(board.GetTracks()):
-    board.Remove(t)
+    _keep.append(t)
+    board.RemoveNative(t)
 for z in list(board.Zones()):
-    board.Remove(z)
+    _keep.append(z)
+    board.RemoveNative(z)
 
 bb = board.GetBoardEdgesBoundingBox()
 BX0, BY0, BX1, BY1 = mm(bb.GetLeft()), mm(bb.GetTop()), mm(bb.GetRight()), mm(bb.GetBottom())
@@ -101,6 +104,18 @@ def stamp_seg(layer, p, q, w, net):
         stamp_disc(layer, p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, w / 2, net)
 
 
+holeblk = np.zeros((NR, NC), bool)
+
+
+def stamp_hole(x, y, drill_r):
+    r = drill_r + 0.15 + 0.15 + 0.1     # hole-to-hole 0.15 + new via drill radius + margin
+    c0 = max(0, int(math.floor((x - r) / G)))
+    c1 = min(NC - 1, int(math.ceil((x + r) / G)))
+    r0 = max(0, int(math.floor((y - r) / G)))
+    r1 = min(NR - 1, int(math.ceil((y + r) / G)))
+    holeblk[r0:r1 + 1, c0:c1 + 1] |= ((X[r0:r1 + 1, c0:c1 + 1] - x) ** 2 + (Y[r0:r1 + 1, c0:c1 + 1] - y) ** 2) <= r * r
+
+
 # ---------------------------------------------------------------- pads
 class Pad:
     pass
@@ -122,7 +137,8 @@ for fp in board.GetFootprints():
         d.attr = p.GetAttribute()
         d.thru = d.attr in (pcbnew.PAD_ATTRIB_PTH, pcbnew.PAD_ATTRIB_NPTH)
         d.drill = mm(max(p.GetDrillSizeX(), p.GetDrillSizeY()))
-        d.layers = [F] if not d.thru else [F, B]
+        d.layers = [l for l, ly in ((F, pcbnew.F_Cu), (B, pcbnew.B_Cu)) if p.IsOnLayer(ly)]
+        d.p = p
         d.stub = None      # (end point, cell) for stub pads
         d.neck = False
         d.skip = False
@@ -131,9 +147,16 @@ for fp in board.GetFootprints():
             nets[d.code] = d.name
         for l in d.layers:
             stamp_rect(l, d.x0, d.y0, d.x1, d.y1, d.code if d.code > 0 else -1)
+        if d.thru and d.drill > 0:
+            stamp_hole(d.cx, d.cy, d.drill / 2)
         if d.attr == pcbnew.PAD_ATTRIB_NPTH:
             for l in (F, B):
                 stamp_disc(l, d.cx, d.cy, d.drill / 2 + 0.25, -1)
+    for z in fp.Zones():           # footprint keepouts (ESP32 antenna)
+        if z.GetIsRuleArea():
+            kb = z.GetBoundingBox()
+            for l in (F, B):
+                stamp_rect(l, mm(kb.GetLeft()), mm(kb.GetTop()), mm(kb.GetRight()), mm(kb.GetBottom()), -1, 0.3)
 # board edge handled in blocked()
 
 by_net = {}
@@ -191,7 +214,7 @@ def blocked(layer, net, w):
 
 def via_blocked(net, d, extra=0.0):
     m = other_mask(F, net) | other_mask(B, net)
-    return dilate(m, d / 2 + CLR + RQ + extra) | edge_block(d)
+    return dilate(m, d / 2 + CLR + RQ + extra) | edge_block(d) | holeblk
 
 
 # ---------------------------------------------------------------- stubs
@@ -208,6 +231,7 @@ def add_track(layer, p, q, w, net):
 
 def add_via(x, y, size, net):
     vias_out.append((x, y, size[0], size[1], net))
+    stamp_hole(x, y, size[1] / 2)
     for l in (F, B):
         stamp_disc(l, x, y, size[0] / 2, net)
 
@@ -220,7 +244,7 @@ def prep_pads():
     seen = set()
     gnd_idx = {}
     for d in pads:
-        if d.code <= 0 or d.thru:
+        if d.code <= 0 or d.thru or len(by_net.get(d.code, [])) < 2:
             continue
         w, h = d.x1 - d.x0, d.y1 - d.y0
         short, long_ = min(w, h), max(w, h)
@@ -277,6 +301,7 @@ def prep_pads():
                 cx_, cy_ = cell(ex) * G, ey
             add_track(F, (ex, ey), (cx_, cy_), sw, d.code)
             d.stub = (cell(cy_), cell(cx_))
+            d.stub_w = sw
 
 
 prep_pads()
@@ -319,8 +344,6 @@ def astar(srcs, goal_fn, tbox, blk, vblk, via_cost, margin_mm, keepout=None):
         if not (0 <= r < hh and 0 <= c < ww):
             continue
         s = l * N + r * ww + c
-        if bl[l][r * ww + c]:
-            continue
         g[s] = 0
         heapq.heappush(heap, (0, 0, s))
     steps = [(dr * ww + dc, cost) for dr, dc, cost in NB]
@@ -401,7 +424,8 @@ def zone_mask(plist):
 def pad_cells(d, blk):
     if d.stub is not None:
         r, c = d.stub
-        return [(F, r, c)] if not blk[F][r, c] else []
+        sb = blocked(F, d.code, d.stub_w)
+        return [(F, r, c)] if not sb[r, c] else []
     out = []
     c0 = int(math.ceil(d.x0 / G))
     c1 = int(math.floor(d.x1 / G))
@@ -410,14 +434,14 @@ def pad_cells(d, blk):
     for l in d.layers:
         for r in range(r0, r1 + 1):
             for c in range(c0, c1 + 1):
-                if not blk[l][r, c]:
+                if not blk[l][r, c] and d.p.HitTest(pcbnew.VECTOR2I(nm(c * G), nm(r * G))):
                     out.append((l, r, c))
     if not out:
         for l in d.layers:
             rr, cc = cell(d.cy), cell(d.cx)
             for r in range(rr - 2, rr + 3):
                 for c in range(cc - 2, cc + 3):
-                    if not blk[l][r, c] and abs(r * G - d.cy) < 0.4 and abs(c * G - d.cx) < 0.4:
+                    if not blk[l][r, c] and d.p.HitTest(pcbnew.VECTOR2I(nm(c * G), nm(r * G))):
                         out.append((l, r, c))
     return out
 
@@ -525,8 +549,13 @@ def run():
             continue
         todo.append(code)
 
+    import os
+    prio = [x for x in os.environ.get('PRIORITY', '/M1_CPH,/M1_IN1,/USB_D-').split(',') if x]
+
     def key(code):
         n = nets[code]
+        if n in prio:
+            return (-1, prio.index(n))
         if n in ORDER:
             return (0, ORDER.index(n))
         if 'I2C' in n:
@@ -550,6 +579,7 @@ def run():
                 ok, log = route_net(code, w, ko)
                 if ok:
                     break
+                print('   %s w=%.2f ko=%s: %s' % (n, w, ko, log), flush=True)
                 del tracks_out[before_t:]
                 del vias_out[before_v:]
                 for l in (F, B):
