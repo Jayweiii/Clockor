@@ -36,9 +36,10 @@ WIDTH = {
     '+3V3': 0.5, '/M1_V3P3': 0.5,
     '/HR_OUT1': 0.5, '/HR_OUT2': 0.5, '/HR_OUT3': 0.5, '/HR_OUT4': 0.5,
 }
-ORDER = ['/VIN_12V', '/BUCK_SW', '+5V', '/M1_OUTA', '/M1_OUTB', '/M1_OUTC',
-         '/BUCK_FB', '+3V3', '/M1_V3P3', '/HR_OUT1', '/HR_OUT2', '/HR_OUT3', '/HR_OUT4',
-         '/USB_D+', '/USB_D-']
+ORDER = ['/VIN_12V', '/BUCK_SW', '+5V',
+         '/M1_EN1', '/M1_VCP', '/USB_D-', '/USB_D+', '/M1_CPH', '/M1_IN1', '/BOOT',
+         '/M1_OUTA', '/M1_OUTB', '/M1_OUTC', '/BUCK_FB', '+3V3', '/M1_V3P3',
+         '/HR_OUT1', '/HR_OUT2', '/HR_OUT3', '/HR_OUT4']
 FALLBACK = [1.5, 1.2, 1.0, 0.8, 0.6, 0.5, 0.4, 0.3, 0.25]
 VIA_BIG = (0.8, 0.4)
 VIA_SMALL = (0.6, 0.3)
@@ -268,20 +269,25 @@ def prep_pads():
         i = gnd_idx.get(kk, 0)
         if is_gnd:
             gnd_idx[kk] = i + 1
-        ls = (0.6 + 0.4 * (i % 2)) if is_gnd else 1.3
+        via_stub = d.ref == 'U5' and d.name == '/M1_EN1' and d.num in ('22', '24', '26')
+        ls = (0.6 + 0.4 * (i % 2)) if is_gnd else (0.75 if via_stub else 1.3)
         lat = d.cy if horiz else d.cx
         sw = min(neck_of(net_width(d.code)), short) if not is_gnd else min(0.25, short)
+        if short < 0.5:
+            sw = min(sw, 0.25)
+        if via_stub:
+            sw = min(sw, 0.25)
         for attempt in (0, 1):
             if horiz:
                 edge = d.x1 if sgn > 0 else d.x0
-                if is_gnd:
+                if is_gnd or via_stub:
                     end = edge + sgn * ls
                 else:
                     end = (math.ceil((edge + sgn * ls) / G) if sgn > 0 else math.floor((edge + sgn * ls) / G)) * G
                 ex, ey = end, lat
             else:
                 edge = d.y1 if sgn > 0 else d.y0
-                if is_gnd:
+                if is_gnd or via_stub:
                     end = edge + sgn * ls
                 else:
                     end = (math.ceil((edge + sgn * ls) / G) if sgn > 0 else math.floor((edge + sgn * ls) / G)) * G
@@ -294,6 +300,13 @@ def prep_pads():
         if is_gnd:
             add_via(ex, ey, VIA_SMALL, GND)
             d.skip = True        # fully handled
+        elif via_stub:
+            add_via(ex, ey, VIA_SMALL, d.code)
+            cx_, cy_ = cell(ex) * G, cell(ey) * G
+            add_track(B, (ex, ey), (cx_, cy_), sw, d.code)
+            d.stub = (cell(cy_), cell(cx_))
+            d.stub_w = sw
+            d.stub_layer = B
         else:
             if horiz:
                 cx_, cy_ = ex, cell(ey) * G
@@ -424,8 +437,9 @@ def zone_mask(plist):
 def pad_cells(d, blk):
     if d.stub is not None:
         r, c = d.stub
-        sb = blocked(F, d.code, d.stub_w)
-        return [(F, r, c)] if not sb[r, c] else []
+        sl = getattr(d, 'stub_layer', F)
+        sb = blocked(sl, d.code, d.stub_w)
+        return [(sl, r, c)] if not sb[r, c] else []
     out = []
     c0 = int(math.ceil(d.x0 / G))
     c1 = int(math.floor(d.x1 / G))
@@ -550,7 +564,7 @@ def run():
         todo.append(code)
 
     import os
-    prio = [x for x in os.environ.get('PRIORITY', '/BOOT,/M1_EN1,/M1_CPH,/M1_IN1,/USB_D-').split(',') if x]
+    prio = [x for x in os.environ.get('PRIORITY', '').split(',') if x]
 
     def key(code):
         n = nets[code]
