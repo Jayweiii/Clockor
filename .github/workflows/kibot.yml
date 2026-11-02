@@ -19,10 +19,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # base-controller uses kibot.base.yml when present (strict: fail on
+      # unconnected). Until that file exists, fall back to kibot.yml so main
+      # stays green. hand-minute always uses kibot.yml (unchanged).
+      - name: Pick KiBot config
+        id: kibot_config
+        run: |
+          if [ "${{ matrix.board }}" = "base-controller" ] && [ -f kibot.base.yml ]; then
+            echo "file=kibot.base.yml" >> "$GITHUB_OUTPUT"
+            echo "Using kibot.base.yml for base-controller"
+          else
+            echo "file=kibot.yml" >> "$GITHUB_OUTPUT"
+            echo "Using kibot.yml for ${{ matrix.board }}"
+          fi
+
       - name: Run KiBot
         uses: INTI-CMNB/KiBot@v2_k9
         with:
-          config: kibot.yml
+          config: ${{ steps.kibot_config.outputs.file }}
           dir: kibot_out/${{ matrix.board }}
           schema: hardware/${{ matrix.board }}/${{ matrix.board }}.kicad_sch
           board: hardware/${{ matrix.board }}/${{ matrix.board }}.kicad_pcb
