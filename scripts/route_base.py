@@ -550,12 +550,12 @@ def run():
         todo.append(code)
 
     import os
-    prio = [x for x in os.environ.get('PRIORITY', '/M1_CPH,/M1_IN1,/USB_D-').split(',') if x]
+    prio = [x for x in os.environ.get('PRIORITY', '/BOOT,/M1_EN1,/M1_CPH,/M1_IN1,/USB_D-').split(',') if x]
 
     def key(code):
         n = nets[code]
         if n in prio:
-            return (-1, prio.index(n))
+            return (0.5, prio.index(n))
         if n in ORDER:
             return (0, ORDER.index(n))
         if 'I2C' in n:

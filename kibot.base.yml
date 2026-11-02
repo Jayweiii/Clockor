@@ -1,0 +1,76 @@
+# KiBot (strict) — base-controller: DRC must be clean INCLUDING unconnected items.
+# Same outputs as kibot.yml; hand-minute stays on kibot.yml.
+kibot:
+  version: 1
+
+filters:
+  - name: exclude_power_flags
+    comment: 'Exclude power flags / virtual from BOM'
+    type: generic
+    exclude_any:
+      - column: Reference
+        regex: '^#.*'
+
+variants: []
+
+preflight:
+  run_erc: true
+  erc_warnings: false   # fail CI only on ERC errors
+  update_xml: true
+  run_drc: true
+  check_zone_fills: false
+  ignore_unconnected: false   # base board is fully routed: unconnected items fail CI
+
+outputs:
+  - name: schematic_pdf
+    comment: Schematic PDF
+    type: pdf_sch_print
+    dir: kibot_out/schematics
+    options:
+      dnp_broken_frames: false
+
+  - name: bom_csv
+    comment: BOM CSV
+    type: bom
+    dir: kibot_out/bom
+    options:
+      format: CSV
+      csv:
+        hide_pcb_info: false
+      exclude_filter: exclude_power_flags
+
+  - name: gerbers
+    comment: Gerbers
+    type: gerber
+    dir: kibot_out/gerbers
+    options:
+      exclude_edge_layer: false
+      plot_sheet_reference: false
+      subtract_mask_from_silk: true
+      use_protel_extension: true
+    layers:
+      - F.Cu
+      - B.Cu
+      - F.Mask
+      - B.Mask
+      - F.SilkS
+      - B.SilkS
+      - Edge.Cuts
+      - F.Paste
+      - B.Paste
+
+  - name: drill
+    comment: Drill files
+    type: excellon
+    dir: kibot_out/gerbers
+
+  - name: pcb_pdf
+    comment: PCB layers PDF
+    type: pdf_pcb_print
+    dir: kibot_out/pcb
+    options:
+      dnp_broken_frames: false
+    layers:
+      - F.Cu
+      - B.Cu
+      - Edge.Cuts
