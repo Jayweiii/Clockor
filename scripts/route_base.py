@@ -317,7 +317,25 @@ def prep_pads():
             d.stub_w = sw
 
 
+base_owner = [o.copy() for o in owner]
+base_hole = holeblk.copy()
 prep_pads()
+FIXED_T = len(tracks_out)       # stubs from prep_pads are never ripped
+FIXED_V = len(vias_out)
+
+
+def rebuild():
+    """Restore base copper and re-stamp every track/via currently kept."""
+    for l in (F, B):
+        owner[l][:] = base_owner[l]
+    holeblk[:] = base_hole
+    for layer, p, q, w, net in tracks_out:
+        stamp_seg(layer, p, q, w, net)
+    for x, y, dia, drill, net in vias_out:
+        stamp_hole(x, y, drill / 2)
+        for l in (F, B):
+            stamp_disc(l, x, y, dia / 2, net)
+
 
 # ---------------------------------------------------------------- A*
 SQ2 = math.sqrt(2)
@@ -579,33 +597,119 @@ def run():
         ys = [d.cy for d in pl]
         return (1, (max(xs) - min(xs)) + (max(ys) - min(ys)))
     todo.sort(key=key)
-    result = {}
-    for code in todo:
+    routed = {}      # code -> (tracks, vias, width)
+    order_of = {c: i for i, c in enumerate(todo)}
+
+    def route_with_fallback(code, max_w=None):
         n = nets[code]
         base = net_width(code)
-        ws = [w for w in FALLBACK if w <= base + 1e-9] or [base]
-        done = False
+        ws = [w for w in FALLBACK if w <= base + 1e-9 and (max_w is None or w <= max_w + 1e-9)] or [base]
         for w in ws:
             before_t, before_v = len(tracks_out), len(vias_out)
             snap = [o.copy() for o in owner]
+            hsnap = holeblk.copy()
             kos = (5.0, 2.5, None) if 'I2C' in n else (None,)
             for ko in kos:
                 ok, log = route_net(code, w, ko)
                 if ok:
                     break
-                print('   %s w=%.2f ko=%s: %s' % (n, w, ko, log), flush=True)
                 del tracks_out[before_t:]
                 del vias_out[before_v:]
                 for l in (F, B):
                     owner[l][:] = snap[l]
+                holeblk[:] = hsnap
             if ok:
-                result[n] = w
-                print('ROUTED %-14s width %.2f' % (n, w), flush=True)
-                done = True
-                break
-        if not done:
-            result[n] = None
-            print('FAILED %-14s %s' % (n, log), flush=True)
+                routed[code] = (tracks_out[before_t:], vias_out[before_v:], w)
+                return w
+        return None
+
+    def save():
+        return (list(tracks_out), list(vias_out), dict(routed))
+
+    def restore(st):
+        tracks_out[:] = st[0]
+        vias_out[:] = st[1]
+        routed.clear()
+        routed.update(st[2])
+        rebuild()
+
+    def rip(codes):
+        ids = set()
+        for c in codes:
+            t, v, _ = routed.pop(c)
+            ids |= {id(x) for x in t} | {id(x) for x in v}
+        tracks_out[:] = [x for x in tracks_out if id(x) not in ids]
+        vias_out[:] = [x for x in vias_out if id(x) not in ids]
+        rebuild()
+
+    def near_nets(code, radius):
+        pts = [(d.cx, d.cy) for d in by_net[code] if not d.skip]
+        out = set()
+        for c, (ts, vs, _) in routed.items():
+            if c == code:
+                continue
+            for layer, p, q, w, net in ts:
+                for (px, py) in pts:
+                    # distance point -> segment
+                    dx, dy = q[0] - p[0], q[1] - p[1]
+                    L2 = dx * dx + dy * dy
+                    t = 0 if L2 == 0 else max(0, min(1, ((px - p[0]) * dx + (py - p[1]) * dy) / L2))
+                    if math.hypot(p[0] + t * dx - px, p[1] + t * dy - py) <= radius:
+                        out.add(c)
+                        break
+                if c in out:
+                    break
+            if c not in out:
+                for x, y, dia, drill, net in vs:
+                    if any(math.hypot(x - px, y - py) <= radius for px, py in pts):
+                        out.add(c)
+                        break
+        return out
+
+    def attempt(code, radius):
+        old_w = routed[code][2] if code in routed else 0.0
+        st = save()
+        victims = near_nets(code, radius)
+        old = {v: routed[v][2] for v in victims}
+        if code in routed:
+            victims.add(code)
+        rip(victims)
+        w = route_with_fallback(code)
+        if w is None or w <= old_w + 1e-9:
+            restore(st)
+            return False
+        for v in sorted(old, key=lambda c: order_of[c]):
+            w2 = route_with_fallback(v)
+            if w2 is None or w2 < old[v] - 1e-9:
+                print('      rip %s r=%.0f: victim %s -> %s (was %.2f)' % (nets[code], radius, nets[v], w2, old[v]), flush=True)
+                restore(st)
+                return False
+        return True
+
+    for code in todo:
+        w = route_with_fallback(code)
+        print(('ROUTED %-14s width %.2f' % (nets[code], w)) if w else ('FAILED %-14s' % nets[code]), flush=True)
+
+    # rip-up and reroute: close failures first, then widen under-width trunks
+    for rnd in range(3):
+        bad = [c for c in todo if c not in routed or routed[c][2] < net_width(c) - 1e-9]
+        bad.sort(key=lambda c: (c in routed, order_of[c]))
+        if not bad:
+            break
+        progress = False
+        for code in bad:
+            want = net_width(code)
+            for radius in (2.0, 4.0, 7.0, 12.0, 25.0):
+                while attempt(code, radius):
+                    progress = True
+                    print('RIPUP  %-14s -> %.2f (r=%.0f)' % (nets[code], routed[code][2], radius), flush=True)
+                    if routed[code][2] >= want - 1e-9:
+                        break
+                if code in routed and routed[code][2] >= want - 1e-9:
+                    break
+        if not progress:
+            break
+    result = {nets[c]: (routed[c][2] if c in routed else None) for c in todo}
     return result
 
 
