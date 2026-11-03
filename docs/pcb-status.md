@@ -7,25 +7,25 @@ Produced by `scripts/route_base.py` (grid router, rebuilt in this pass; re-runna
 | Metric (`kicad-cli pcb drc`, repo rules) | Before (main) | After |
 |---|---|---|
 | Clearance / short errors | 0 | **0** |
-| Unconnected items | 68 | **5** |
-| Warnings | 9 (`track_dangling`, `hole_to_hole`) | 5 (`track_dangling`, stub ends of the unfinished nets) |
+| Unconnected items | 68 | **2** (both GND pour clusters) |
+| Warnings | 9 (`track_dangling`, `hole_to_hole`) | 0 |
 
-**Still unconnected (the blocker):**
-- `/M1_CPH` (U5.2 to C20.1), `/M1_OUTC` (U5.9 to J3.3), `/USB_D+` (J2.A6/B6 to U1.14): the router found no path out of the 0.65 mm-pitch DRV8313 pin comb and the 0.5 mm-pitch USB-C pads once neighbouring nets were placed. The router is greedy (no rip-up); each ordering change fixed some nets and boxed in others. Needs rip-up/reroute or a manual fan-out in pcbnew.
-- One GND pour island on F.Cu is not tied to the rest (needs one more stitching via or a pour tweak).
+Second pass (`route_base.py` now has rip-up-and-reroute, a via-in-stub escape for the J2 `USB_D+` pads, and a GND cluster check): `M1_CPH`, `M1_OUTC` and `USB_D+` are now routed, and every signal and power net is connected.
+
+**Still unconnected (the blocker):** two small GND pour clusters (DRC reports them as "Zone [GND] on F.Cu" pairs). They are the GND tie vias of the DRV8313 (U5 pins 6/7/9 area, about x 105-107, y 44-50) and of J3 (about x 112, y 43-48). They are boxed in by the M1_OUTA/B/C escapes and the IN1/IN3/CPL lines on B.Cu. The automatic link step ripped nearby nets to route a GND track out, but `M1_CPH` and `M1_OUTC` could not be rerouted afterwards, so it rolled back. This needs a manual fan-out in pcbnew (or moving the DRV8313 support passives).
 
 **Rules applied:** `VIN_12V` and `BUCK_SW` trunks at 1.5 mm (0.5 mm necks at fine-pitch pins); `+3V3` and `HR_OUT*` 0.5 mm; signals 0.25 mm (0.2 mm necks at fine pitch); GND pours on F.Cu and B.Cu with about 5 mm stitching vias; I2C kept clear of the motor phases (5 mm keep-out in the router).
 
 **Tradeoffs / deviations:**
-- **`+5V` (XL4015 output) is only 0.25-0.3 mm, not >=1.5 mm.** In this particular router ordering the wide attempt failed and fell back to the narrowest width that completed. Other orderings tried in this pass did route `+5V` at 1.5 mm but then left other nets unconnected. The approved rule is not met for this net.
-- Motor phases `M1_OUTA/B/C` are **0.25-0.3 mm, not 1.5-2 mm**. The 0.65 mm pin pitch at U5 leaves no room for wide copper and the router uses one width per net. This does not meet the approved 2 A rule and must be widened by hand (or with a polygon) before the board is built.
+- **`+5V` (XL4015 output) is 0.3 mm, not >=1.5 mm.** Rip-up could not widen it: every attempt boxed in `USB_D-`.
+- **`M1_OUTA` / `M1_OUTB` are 0.3 mm, not 1.5-2 mm.** Widening either one failed because it ripped `VIN_12V` (fell to 0.3 mm), `M1_CPH` or `M1_OUTC`. `M1_OUTC` is now 1.5 mm trunk (0.25-0.5 mm at the DRV8313 pin; the pin pitch of 0.65 mm does not allow 1.0 mm there). No >=1.0 mm necks exist at U5 for any phase.
 - `M1_V3P3` is 0.25-0.3 mm (requested 0.5 mm).
 - Fine-pitch pins use short exact-geometry escape stubs; `M1_EN1` pins on U5 use stub vias and join on B.Cu.
 - The U1 antenna keep-out is honoured (no copper or pour under it).
 
-**CI:** `kibot.base.yml` (strict, `ignore_unconnected: false`) is added and picked up for base-controller by the workflow. It stays **red** until the unconnected items above are closed. `hand-minute` is unchanged on `kibot.yml`.
+**CI:** `kibot.base.yml` (strict, `ignore_unconnected: false`) is added and picked up for base-controller by the workflow. It stays **red** until the two GND clusters above are closed. KiBot was not run in this job (DRC only). `hand-minute` is unchanged on `kibot.yml`.
 
-Renders: `renders/base-controller_{front,back,3d}.{png,jpg}` and `_F_Cu.svg` / `_B_Cu.svg` are regenerated; previous versions are in `renders/before/`. The F_Cu/B_Cu PNG/JPG were removed rather than left stale (no SVG rasteriser was permitted in the job).
+Renders: `renders/base-controller_{front,back,3d}.{png,jpg}` and `_F_Cu.svg` / `_B_Cu.svg` front/back PNG+JPG and the F_Cu/B_Cu SVGs are regenerated; the 3D view was not regenerated (kicad-cli rejected the rotate option in this job). Previous versions are in `renders/before/`.
 
 ---
 
