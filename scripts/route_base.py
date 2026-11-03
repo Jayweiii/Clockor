@@ -645,8 +645,9 @@ def run():
         vias_out[:] = [x for x in vias_out if id(x) not in ids]
         rebuild()
 
-    def near_nets(code, radius):
-        pts = [(d.cx, d.cy) for d in by_net[code] if not d.skip]
+    def near_nets(code, radius, pts=None):
+        if pts is None:
+            pts = [(d.cx, d.cy) for d in by_net[code] if not d.skip]
         out = set()
         for c, (ts, vs, _) in routed.items():
             if c == code:
@@ -713,6 +714,9 @@ def run():
         if not progress:
             break
     result = {nets[c]: (routed[c][2] if c in routed else None) for c in todo}
+    global RT
+    RT = dict(routed=routed, order_of=order_of, route=route_with_fallback, save=save,
+              restore=restore, rip=rip, near=near_nets)
     return result
 
 
@@ -811,7 +815,197 @@ for lyr in LAYER:
     for px, py in ((BX0 + m, BY0 + m), (BX1 - m, BY0 + m), (BX1 - m, BY1 - m), (BX0 + m, BY1 - m)):
         o.Append(nm(px), nm(py))
     board.Add(z)
-pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+def fill():
+    pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+
+
+def board_add_track(layer, p, q, w, net):
+    t = pcbnew.PCB_TRACK(board)
+    t.SetStart(pcbnew.VECTOR2I(nm(p[0]), nm(p[1])))
+    t.SetEnd(pcbnew.VECTOR2I(nm(q[0]), nm(q[1])))
+    t.SetWidth(nm(w))
+    t.SetLayer(LAYER[layer])
+    t.SetNetCode(net)
+    board.Add(t)
+
+
+def board_add_via(x, y, dia, drill, net):
+    v = pcbnew.PCB_VIA(board)
+    v.SetPosition(pcbnew.VECTOR2I(nm(x), nm(y)))
+    v.SetViaType(pcbnew.VIATYPE_THROUGH)
+    v.SetDrill(nm(drill))
+    try:
+        v.SetWidth(nm(dia))
+    except TypeError:
+        v.SetWidth(pcbnew.F_Cu, nm(dia))
+    v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+    v.SetNetCode(net)
+    board.Add(v)
+
+
+def gnd_clusters():
+    """Return list of clusters (each: list of (kind, x_mm, y_mm, layers)), biggest first."""
+    isl = []
+    for z in board.Zones():
+        for lyr in z.GetLayerSet().Seq():
+            fp = z.GetFilledPolysList(lyr)
+            for i in range(fp.OutlineCount()):
+                ps = pcbnew.SHAPE_POLY_SET()
+                ps.AddOutline(fp.Outline(i))
+                for h in range(fp.HoleCount(i)):
+                    ps.AddHole(fp.Hole(i, h))
+                isl.append((lyr, ps, fp.Outline(i).BBox()))
+    par = list(range(len(isl)))
+
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]
+            a = par[a]
+        return a
+
+    def at(lyr, pos):
+        return [k for k, (l, ps, bb) in enumerate(isl) if l == lyr and bb.Contains(pos) and ps.Contains(pos)]
+
+    items = []     # (kind, pos, layers, island ids)
+    for t in board.GetTracks():
+        if t.GetNetCode() != GND:
+            continue
+        if t.GetClass() == 'PCB_VIA':
+            ids = at(pcbnew.F_Cu, t.GetPosition()) + at(pcbnew.B_Cu, t.GetPosition())
+            items.append(('via', t.GetPosition(), [F, B], ids))
+        else:
+            lyr = t.GetLayer()
+            ids = at(lyr, t.GetStart()) + at(lyr, t.GetEnd())
+        for a in ids[1:]:
+            par[find(a)] = find(ids[0])
+    for fp in board.GetFootprints():
+        for p in fp.Pads():
+            if p.GetNetCode() == GND:
+                ids = []
+                for l, ly in ((F, pcbnew.F_Cu), (B, pcbnew.B_Cu)):
+                    if p.IsOnLayer(ly):
+                        ids += at(ly, p.GetPosition())
+                for a in ids[1:]:
+                    par[find(a)] = find(ids[0])
+                items.append(('pad', p.GetPosition(), [l for l, ly in ((F, pcbnew.F_Cu), (B, pcbnew.B_Cu)) if p.IsOnLayer(ly)], ids))
+    comp = {}
+    for kind, pos, ls, ids in items:
+        if ids:
+            comp.setdefault(find(ids[0]), []).append((kind, mm(pos.x), mm(pos.y), ls))
+    size = {}
+    for k in range(len(isl)):
+        size[find(k)] = size.get(find(k), 0) + 1
+    return [comp[r] for r in sorted(comp, key=lambda r: -size[r])]
+
+
+def sync_board():
+    """Replace every track/via on the board with the current router state."""
+    for t in list(board.GetTracks()):
+        board.RemoveNative(t)
+    for layer, p, q, w, net in tracks_out:
+        board_add_track(layer, p, q, w, net)
+    for x, y, dia, drill, net in vias_out:
+        board_add_via(x, y, dia, drill, net)
+
+
+def connect_clusters(maxiter=8):
+    for it in range(maxiter):
+        fill()
+        cl = gnd_clusters()
+        print('GND clusters:', len(cl), flush=True)
+        if len(cl) <= 1:
+            return True
+        main = cl[0]
+        goals = set()
+        for kind, x, y, ls in main:
+            for l in ls:
+                goals.add((l, cell(y), cell(x)))
+        gl = list(goals)
+        fixed_any = False
+        for minor in cl[1:]:
+            srcs = []
+            for kind, x, y, ls in minor:
+                for l in ls:
+                    srcs.append((l, cell(y), cell(x)))
+            sx = sum(s[2] for s in srcs) / len(srcs)
+            sy = sum(s[1] for s in srcs) / len(srcs)
+            g = min(gl, key=lambda q: abs(q[2] - sx) + abs(q[1] - sy))
+            tbox = (g[1], g[2], g[1], g[2])
+            pts = [(x, y) for kind, x, y, ls in minor]
+            linked = None
+            for radius in (0.0, 2.0, 3.5, 6.0, 10.0):
+                st = RT['save']()
+                old = {}
+                if radius > 0:
+                    victims = RT['near'](-1, radius, pts)
+                    old = {v: RT['routed'][v][2] for v in victims}
+                    RT['rip'](victims)
+                blk = [blocked(l, GND, 0.25) for l in (F, B)]
+                for l, r, c in srcs:
+                    blk[l][r, c] = False
+                vblk = via_blocked(GND, VIA_SMALL[0], 0.1)
+                path = None
+                for margin in (15, 40, 120):
+                    path = astar(srcs, lambda l, r, c: (l, r, c) in goals, tbox, blk, vblk, 6, margin)
+                    if path:
+                        break
+                if path:
+                    emit_path(path, GND, 0.25, 0.25, np.zeros((NR, NC), bool), VIA_SMALL)
+                    good = True
+                    for v in sorted(old, key=lambda c: RT['order_of'][c]):
+                        w2 = RT['route'](v)
+                        if w2 is None or w2 < old[v] - 1e-9:
+                            print('    victim %s -> %s (was %.2f) at r=%.1f' % (nets[v], w2, old[v], radius), flush=True)
+                            good = False
+                            break
+                    if good:
+                        linked = radius
+                        break
+                RT['restore'](st)
+            if linked is None:
+                print('  cluster of %d items: no GND link found' % len(minor), flush=True)
+                continue
+            sync_board()
+            print('  linked cluster of %d items (rip radius %.1f)' % (len(minor), linked), flush=True)
+            fixed_any = True
+            break           # refill and recompute after each link
+        if not fixed_any:
+            return False
+    return False
+
+
+def prune_dead_vias():
+    """Remove stitching vias (no track attached) that are not inside the fill on both layers."""
+    fills = {}
+    for z in board.Zones():
+        for lyr in z.GetLayerSet().Seq():
+            fills[lyr] = z.GetFilledPolysList(lyr)
+    ends = set()
+    for t in board.GetTracks():
+        if t.GetClass() != 'PCB_VIA':
+            ends.add((t.GetStart().x, t.GetStart().y))
+            ends.add((t.GetEnd().x, t.GetEnd().y))
+    kill = []
+    for t in board.GetTracks():
+        if t.GetClass() != 'PCB_VIA' or t.GetNetCode() != GND:
+            continue
+        pos = t.GetPosition()
+        if (pos.x, pos.y) in ends:
+            continue
+        ok = all(fills[ly].Collide(pos, 0) for ly in (pcbnew.F_Cu, pcbnew.B_Cu))
+        if not ok:
+            kill.append(t)
+    for t in kill:
+        board.Remove(t)
+    return len(kill)
+
+
+ok = connect_clusters()
+nk = prune_dead_vias()
+print('pruned dead stitching vias:', nk)
+if nk:
+    ok = connect_clusters(3)
+print('GND connected:', ok)
 pcbnew.SaveBoard(DST, board)
 print('saved', DST)
 print(result)
