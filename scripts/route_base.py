@@ -43,6 +43,7 @@ ORDER = ['/VIN_12V', '/BUCK_SW', '+5V',
 FALLBACK = [1.5, 1.2, 1.0, 0.8, 0.6, 0.5, 0.4, 0.3, 0.25]
 VIA_BIG = (0.8, 0.4)
 VIA_SMALL = (0.6, 0.3)
+VIA_USB = (0.55, 0.3)     # board minimum; fits between 0.5 mm-pitch USB-C pads
 ZONE_R = 3.0       # radius around neck pads where the narrow neck width applies
 
 
@@ -269,7 +270,9 @@ def prep_pads():
         i = gnd_idx.get(kk, 0)
         if is_gnd:
             gnd_idx[kk] = i + 1
-        via_stub = d.ref == 'U5' and d.name == '/M1_EN1' and d.num in ('22', '24', '26')
+        via_stub = (d.ref == 'U5' and d.name == '/M1_EN1' and d.num in ('22', '24', '26')) or \
+                   (d.ref == 'J2' and d.name == '/USB_D+')
+        vsz_stub = VIA_USB if d.ref == 'J2' else VIA_SMALL
         ls = (0.6 + 0.4 * (i % 2)) if is_gnd else (0.75 if via_stub else 1.3)
         lat = d.cy if horiz else d.cx
         sw = min(neck_of(net_width(d.code)), short) if not is_gnd else min(0.25, short)
@@ -301,7 +304,7 @@ def prep_pads():
             add_via(ex, ey, VIA_SMALL, GND)
             d.skip = True        # fully handled
         elif via_stub:
-            add_via(ex, ey, VIA_SMALL, d.code)
+            add_via(ex, ey, vsz_stub, d.code)
             cx_, cy_ = cell(ex) * G, cell(ey) * G
             add_track(B, (ex, ey), (cx_, cy_), sw, d.code)
             d.stub = (cell(cy_), cell(cx_))
