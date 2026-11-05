@@ -6,7 +6,7 @@ obstacles and re-routes only the nets named in $RIP (comma list, e.g.
 generated for ripped nets.  GND tracks, vias and the pours are kept.
 
 Usage:  python3 scripts/gen_reroute_net.py
-        RIP='+5V,/USB_D-,/USB_D+' python3 scripts/reroute_net.py SRC.kicad_pcb DST.kicad_pcb
+        python3 scripts/reroute_net.py SRC.kicad_pcb DST.kicad_pcb "+5V,/USB_D-,/USB_D+"
 """
 import re
 
@@ -28,7 +28,7 @@ for z in list(board.Zones()):
     _keep.append(z)
     board.RemoveNative(z)
 ''', '''import os
-RIPN = set(x for x in os.environ.get('RIP', '+5V').split(',') if x)
+RIPN = set(x for x in (sys.argv[3] if len(sys.argv) > 3 else os.environ.get('RIP', '+5V')).split(',') if x)
 KEEP_T = []
 KEEP_V = []
 for t in list(board.GetTracks()):
@@ -64,6 +64,9 @@ sub('''        if code == GND:
         if len([d for d in pl if not d.skip]) < 2:''', '''        if code == GND or code not in RIPC:
             continue
         if len([d for d in pl if not d.skip]) < 2:''')
+
+# 3b. +5V first, then the other trunks
+sub("ORDER = ['/VIN_12V', '/BUCK_SW', '+5V',", "ORDER = ['+5V', '/VIN_12V', '/BUCK_SW',")
 
 # 4. no GND ties / stitching / new zones; write kept copper back
 sub('''gf = gnd_ties()

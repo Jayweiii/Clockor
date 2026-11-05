@@ -37,7 +37,7 @@ WIDTH = {
     '+3V3': 0.5, '/M1_V3P3': 0.5,
     '/HR_OUT1': 0.5, '/HR_OUT2': 0.5, '/HR_OUT3': 0.5, '/HR_OUT4': 0.5,
 }
-ORDER = ['/VIN_12V', '/BUCK_SW', '+5V',
+ORDER = ['+5V', '/VIN_12V', '/BUCK_SW',
          '/M1_EN1', '/M1_VCP', '/USB_D-', '/USB_D+', '/M1_CPH', '/M1_IN1', '/BOOT',
          '/M1_OUTA', '/M1_OUTB', '/M1_OUTC', '/BUCK_FB', '+3V3', '/M1_V3P3',
          '/HR_OUT1', '/HR_OUT2', '/HR_OUT3', '/HR_OUT4']
@@ -54,7 +54,7 @@ def neck_of(w):
 
 board = pcbnew.LoadBoard(SRC)
 import os
-RIPN = set(x for x in os.environ.get('RIP', '+5V').split(',') if x)
+RIPN = set(x for x in (sys.argv[3] if len(sys.argv) > 3 else os.environ.get('RIP', '+5V')).split(',') if x)
 KEEP_T = []
 KEEP_V = []
 for t in list(board.GetTracks()):
